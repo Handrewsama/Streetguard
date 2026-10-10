@@ -646,7 +646,7 @@ body.driving-mode #drivingRadarHUD{display:block}
     .halo-preset-row { display:flex; gap:6px; margin-top:9px; }
     .halo-preset-row button { flex:1; min-height:38px; }
 
-    /* ── V47 VISION + PERSON ALERTS ─── */
+    /* ── V48 VISION + PERSON ALERTS ─── */
     .vision-panel{margin:10px 0;padding:11px;border:1px solid #293b49;border-radius:12px;background:linear-gradient(145deg,rgba(15,28,40,.96),rgba(8,10,17,.96));color:var(--text)}
     .vision-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
     .vision-title{font-size:12px;font-weight:800;letter-spacing:.7px}
@@ -673,8 +673,8 @@ body.driving-mode #drivingRadarHUD{display:block}
     @media(min-width:600px){.vision-video-wrap{max-height:260px}}
 
 
-    /* V47: compact swipeable dashboard / vision views */
-    #speedViewTabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:5px;margin:0 0 8px;border:1px solid #263544;border-radius:12px;background:#080e15;position:sticky;top:0;z-index:30}
+    /* V48: compact swipeable dashboard / vision views */
+    #speedViewTabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:5px;margin:8px 0 10px;border:1px solid #263544;border-radius:12px;background:#080e15;position:relative;z-index:5}
     #speedViewTabs button{min-height:42px;border-radius:9px;border:1px solid transparent;background:transparent;color:#9eb0c0;font-size:11px;font-weight:850;letter-spacing:.25px}
     #speedViewTabs button[aria-selected="true"]{background:#123040;border-color:#1d6c85;color:#c3f3ff}
     #visionPanel{display:none}
@@ -723,7 +723,7 @@ body.driving-mode #drivingRadarHUD{display:block}
   <div id="titleBar">
     <div class="tb-left">
       <div class="tb-dot" id="statusDot"></div>
-      <img class="tb-logo" src="logo-mark.png" alt="" aria-hidden="true"><span class="tb-title">SPEEDGUARD <span class="app-version">V47</span></span>
+      <img class="tb-logo" src="logo-mark.png" alt="" aria-hidden="true"><span class="tb-title">SPEEDGUARD <span class="app-version">V48</span></span>
     </div>
     <div class="tb-actions">
       <button class="tb-btn" id="minimizeBtn" title="Minimizar">_</button>
@@ -786,20 +786,15 @@ body.driving-mode #drivingRadarHUD{display:block}
     <!-- ── SPEED SCREEN ── -->
     <div id="speedScreen" class="screen active">
 
-      <nav id="speedViewTabs" aria-label="Vistes de conducció">
-        <button id="dashboardViewBtn" type="button" aria-selected="true">🚗 VELOCITAT I RADARS</button>
-        <button id="visionViewBtn" type="button" aria-selected="false">👁 CÀMERA I ALERTES</button>
-      </nav>
-
       <!-- Driving mode -->
       <button id="driveModeBtn" onclick="toggleDrivingMode()">🚗 ACTIVAR MODO CONDUCCIÓN</button>
       <div id="driveStatus" class="drive-status">
         <span>ESTADO</span><strong id="driveStatusText">LISTO</strong>
       </div>
 
-      <!-- V47: swipeable dashboard/vision views and experimental person alerts -->
+      <!-- V48: swipeable dashboard/vision views and experimental person alerts -->
       <section id="visionPanel" class="vision-panel" aria-labelledby="visionTitle">
-        <div class="vision-head"><span id="visionTitle" class="vision-title">👁 VISIÓ ARTIFICIAL</span><span class="vision-tag">VISIÓ V47</span></div>
+        <div class="vision-head"><span id="visionTitle" class="vision-title">👁 VISIÓ ARTIFICIAL</span><span class="vision-tag">VISIÓ V48</span></div>
         <p class="vision-description">Detecció visual experimental amb estimació aproximada de distància. Ajusta per separat els llindars de persones, vehicles i bicicletes/patinets; no és una mesura calibrada.</p>
         <div id="visionVideoWrap" class="vision-video-wrap">
           <video id="visionPreview" autoplay muted playsinline aria-label="Vista de la càmera posterior orientada a la carretera"></video>
@@ -828,6 +823,11 @@ body.driving-mode #drivingRadarHUD{display:block}
         <div id="visionStatus" class="vision-status" data-state="idle" role="status" aria-live="polite"><span class="vision-status-dot" aria-hidden="true"></span><span id="visionStatusText">Càmera desactivada. Activa-la només amb el vehicle aturat.</span></div>
         <div class="vision-note">La càmera necessita permís i HTTPS. En segon pla, iOS pot suspendre la captura. La distància s’estima amb la mida aparent de l’objecte i pot ser molt imprecisa segons la càmera i la posició de l’objecte. No és un sistema de prevenció de col·lisions ni substitueix l’atenció del conductor.</div>
       </section>
+
+      <nav id="speedViewTabs" aria-label="Vistes de conducció">
+        <button id="dashboardViewBtn" type="button" aria-selected="true">🚗 VELOCITAT I RADARS</button>
+        <button id="visionViewBtn" type="button" aria-selected="false">👁 CÀMERA I ALERTES</button>
+      </nav>
 
       <!-- Secondary controls -->
       <div id="secondaryControls">
@@ -2925,7 +2925,7 @@ setInterval(() => {
 </script>
 <script>
 if ("serviceWorker" in navigator) {
-  // SpeedGuard V47 — force Service Worker refresh and recover from stale caches
+  // SpeedGuard V48 — force Service Worker refresh and recover from stale caches
   if ('serviceWorker' in navigator) {
     let sgReloadedAfterUpdate = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -2935,7 +2935,7 @@ if ("serviceWorker" in navigator) {
     });
     navigator.serviceWorker.register('./sw.js?v=46', { updateViaCache: 'none' })
       .then(reg => {
-        console.log('SpeedGuard SW V47 registered', reg);
+        console.log('SpeedGuard SW V48 registered', reg);
         reg.update().catch(() => {});
       })
       .catch(e => console.warn('SW err', e));
