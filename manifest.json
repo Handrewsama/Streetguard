@@ -1,6 +1,6 @@
 {
-  "name": "SpeedGuard DGT",
-  "short_name": "SpeedGuard",
+  "name": "SpeedGuard V47 Vision Alerts",
+  "short_name": "SpeedGuard V47",
   "description": "Control de velocidad y alertas DGT con GPS. Detecció experimental d’objectes amb càmera.",
   "start_url": "./index.html",
   "display": "standalone",

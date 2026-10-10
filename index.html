@@ -646,7 +646,7 @@ body.driving-mode #drivingRadarHUD{display:block}
     .halo-preset-row { display:flex; gap:6px; margin-top:9px; }
     .halo-preset-row button { flex:1; min-height:38px; }
 
-    /* ── V45 VISION OBJECT DETECTION PROTOTYPE ─── */
+    /* ── V47 VISION + PERSON ALERTS ─── */
     .vision-panel{margin:10px 0;padding:11px;border:1px solid #293b49;border-radius:12px;background:linear-gradient(145deg,rgba(15,28,40,.96),rgba(8,10,17,.96));color:var(--text)}
     .vision-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
     .vision-title{font-size:12px;font-weight:800;letter-spacing:.7px}
@@ -672,6 +672,38 @@ body.driving-mode #drivingRadarHUD{display:block}
     .vision-note{font-size:9px;line-height:1.4;color:#818b9b;margin-top:7px}
     @media(min-width:600px){.vision-video-wrap{max-height:260px}}
 
+
+    /* V47: compact swipeable dashboard / vision views */
+    #speedViewTabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:5px;margin:0 0 8px;border:1px solid #263544;border-radius:12px;background:#080e15;position:sticky;top:0;z-index:30}
+    #speedViewTabs button{min-height:42px;border-radius:9px;border:1px solid transparent;background:transparent;color:#9eb0c0;font-size:11px;font-weight:850;letter-spacing:.25px}
+    #speedViewTabs button[aria-selected="true"]{background:#123040;border-color:#1d6c85;color:#c3f3ff}
+    #visionPanel{display:none}
+    #speedScreen.vision-mode #visionPanel{display:block;margin:0;padding:10px;border-radius:12px}
+    #speedScreen.vision-mode > *:not(#speedViewTabs):not(#visionPanel){display:none!important}
+    #speedScreen.vision-mode #visionPanel .vision-description{display:none}
+    #speedScreen.vision-mode #visionPanel .vision-head{margin-bottom:6px}
+    #speedScreen.vision-mode #visionPanel .vision-video-wrap{display:block;width:100%;aspect-ratio:4/3;height:auto;max-height:none;margin-bottom:7px}
+    #speedScreen.vision-mode #visionPanel{overflow:visible}
+    #speedScreen.vision-mode #visionPanel .vision-description{display:block;font-size:10px}
+    .vision-distance-settings{display:grid;grid-template-columns:1fr;gap:8px;margin:8px 0}
+    .vision-distance-card{padding:9px;border:1px solid #344354;border-radius:9px;background:#101923}
+    .vision-distance-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;font-weight:800;color:#e5f2fa}
+    .vision-distance-value{color:#ffd27b;font-variant-numeric:tabular-nums}
+    .vision-distance-slider{width:100%;accent-color:#ffbd55;margin:7px 0 0}
+    .vision-distance-help{font-size:9px;color:#9db0c0;line-height:1.4;margin-top:4px}
+    @media(min-width:600px){.vision-distance-settings{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    #speedScreen.vision-mode #visionPanel .vision-detection-summary{margin:5px 0}
+    #speedScreen.vision-mode #visionPanel .vision-status{margin-top:5px;padding:6px}
+    #speedScreen.vision-mode #visionPanel .vision-note{margin-top:5px}
+    .vision-alert-settings{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:7px 0}
+    .vision-alert-option{display:flex;align-items:center;gap:7px;padding:8px;border:1px solid #344354;border-radius:8px;background:#101923;color:#dce9f2;font-size:10px;font-weight:750}
+    .vision-alert-option input{width:17px;height:17px;accent-color:#ffbd55;flex:0 0 auto}
+    #visionAlertStatus{font-size:10px;line-height:1.35;color:#ffd27b;padding:7px 8px;border:1px solid #6a4c24;background:#241b0d;border-radius:8px;margin-top:6px}
+    #visionAlertStatus[data-state="quiet"]{color:#a6bac9;border-color:#2a3b4a;background:#0b1119}
+    html.vision-person-warning::before{content:"";position:fixed;inset:0;z-index:9998;pointer-events:none;border:8px solid rgba(255,157,42,.95);box-shadow:inset 0 0 22px rgba(255,80,30,.42);animation:visionWarningPulse .6s ease-in-out 2}
+    @keyframes visionWarningPulse{0%,100%{opacity:.95}50%{opacity:.35}}
+    @media(max-height:720px){#speedScreen.vision-mode #visionPanel{padding:8px}}
+
     /* Scrollbar */
     * { scrollbar-width: thin; scrollbar-color: #222 transparent; }
   
@@ -691,7 +723,7 @@ body.driving-mode #drivingRadarHUD{display:block}
   <div id="titleBar">
     <div class="tb-left">
       <div class="tb-dot" id="statusDot"></div>
-      <img class="tb-logo" src="logo-mark.png" alt="" aria-hidden="true"><span class="tb-title">SPEEDGUARD <span class="app-version">V45</span></span>
+      <img class="tb-logo" src="logo-mark.png" alt="" aria-hidden="true"><span class="tb-title">SPEEDGUARD <span class="app-version">V47</span></span>
     </div>
     <div class="tb-actions">
       <button class="tb-btn" id="minimizeBtn" title="Minimizar">_</button>
@@ -754,28 +786,47 @@ body.driving-mode #drivingRadarHUD{display:block}
     <!-- ── SPEED SCREEN ── -->
     <div id="speedScreen" class="screen active">
 
+      <nav id="speedViewTabs" aria-label="Vistes de conducció">
+        <button id="dashboardViewBtn" type="button" aria-selected="true">🚗 VELOCITAT I RADARS</button>
+        <button id="visionViewBtn" type="button" aria-selected="false">👁 CÀMERA I ALERTES</button>
+      </nav>
+
       <!-- Driving mode -->
       <button id="driveModeBtn" onclick="toggleDrivingMode()">🚗 ACTIVAR MODO CONDUCCIÓN</button>
       <div id="driveStatus" class="drive-status">
         <span>ESTADO</span><strong id="driveStatusText">LISTO</strong>
       </div>
 
-      <!-- V45: experimental object detection; no hazard alerts enabled -->
+      <!-- V47: swipeable dashboard/vision views and experimental person alerts -->
       <section id="visionPanel" class="vision-panel" aria-labelledby="visionTitle">
-        <div class="vision-head"><span id="visionTitle" class="vision-title">👁 VISIÓ ARTIFICIAL</span><span class="vision-tag">DETECCIÓ V45</span></div>
-        <p class="vision-description">Prototip experimental: detecta objectes comuns a la imatge i dibuixa requadres. No avalua encara el risc real ni emet avisos de perill.</p>
+        <div class="vision-head"><span id="visionTitle" class="vision-title">👁 VISIÓ ARTIFICIAL</span><span class="vision-tag">VISIÓ V47</span></div>
+        <p class="vision-description">Detecció visual experimental amb estimació aproximada de distància. Ajusta per separat els llindars de persones, vehicles i bicicletes/patinets; no és una mesura calibrada.</p>
         <div id="visionVideoWrap" class="vision-video-wrap">
           <video id="visionPreview" autoplay muted playsinline aria-label="Vista de la càmera posterior orientada a la carretera"></video>
           <canvas id="visionOverlay" aria-hidden="true"></canvas>
-          <span class="vision-video-label">CÀMERA + DETECCIÓ EXPERIMENTAL</span>
+          <span class="vision-video-label">CÀMERA + DISTÀNCIA ESTIMADA</span>
         </div>
         <div class="vision-actions">
           <button id="visionStart" type="button">▶ ACTIVAR CÀMERA</button>
           <button id="visionStop" type="button" disabled>■ ATURAR CÀMERA</button>
         </div>
+        <div class="vision-distance-settings" aria-label="Distàncies configurables d'alerta">
+          <div class="vision-distance-card"><div class="vision-distance-head"><label for="visionPersonDistance">🧍 Persones</label><span class="vision-distance-value" id="visionPersonDistanceValue">5 m</span></div><input class="vision-distance-slider" id="visionPersonDistance" type="range" min="2" max="20" step="1" value="5"><div class="vision-distance-help">Distància estimada per avisar de vianants.</div></div>
+          <div class="vision-distance-card"><div class="vision-distance-head"><label for="visionVehicleDistance">🚗 Cotxes, motos i camions</label><span class="vision-distance-value" id="visionVehicleDistanceValue">8 m</span></div><input class="vision-distance-slider" id="visionVehicleDistance" type="range" min="3" max="35" step="1" value="8"><div class="vision-distance-help">Inclou cotxe, motocicleta, autobús i camió quan el model els reconeix.</div></div>
+          <div class="vision-distance-card"><div class="vision-distance-head"><label for="visionCycleDistance">🚲 Bicicletes i patinets</label><span class="vision-distance-value" id="visionCycleDistanceValue">4 m</span></div><input class="vision-distance-slider" id="visionCycleDistance" type="range" min="2" max="15" step="1" value="4"><div class="vision-distance-help">El model reconeix bicicletes; els patinets no són una classe pròpia i poden confondre's amb bicicleta o moto.</div></div>
+        </div>
+        <div class="vision-alert-settings" aria-label="Opcions d'alerta">
+          <label class="vision-alert-option"><input id="visionPersonAlert" type="checkbox" checked> Alertes de persones</label>
+          <label class="vision-alert-option"><input id="visionVehicleAlert" type="checkbox" checked> Alertes de vehicles</label>
+          <label class="vision-alert-option"><input id="visionCycleAlert" type="checkbox" checked> Alertes de bicicletes/patinets</label>
+          <label class="vision-alert-option"><input id="visionSoundAlert" type="checkbox" checked> So</label>
+          <label class="vision-alert-option"><input id="visionVibrationAlert" type="checkbox" checked> Vibració si disponible</label>
+          <label class="vision-alert-option"><input id="visionOverlayAlert" type="checkbox" checked> Halo taronja/vermell</label>
+        </div>
+        <div id="visionAlertStatus" data-state="quiet" role="status" aria-live="polite">Alertes preparades. La proximitat és una estimació visual experimental.</div>
         <div id="visionDetectionSummary" class="vision-detection-summary"><span class="vision-chip neutral">Model no carregat</span></div>
         <div id="visionStatus" class="vision-status" data-state="idle" role="status" aria-live="polite"><span class="vision-status-dot" aria-hidden="true"></span><span id="visionStatusText">Càmera desactivada. Activa-la només amb el vehicle aturat.</span></div>
-        <div class="vision-note">La càmera necessita permís i HTTPS. En segon pla, iOS pot suspendre la captura. No utilitzis aquesta prova com a sistema de seguretat durant la conducció.</div>
+        <div class="vision-note">La càmera necessita permís i HTTPS. En segon pla, iOS pot suspendre la captura. La distància s’estima amb la mida aparent de l’objecte i pot ser molt imprecisa segons la càmera i la posició de l’objecte. No és un sistema de prevenció de col·lisions ni substitueix l’atenció del conductor.</div>
       </section>
 
       <!-- Secondary controls -->
@@ -2518,6 +2569,10 @@ let visionModelLoading = false;
 let visionInferenceBusy = false;
 const VISION_MIN_SCORE = 0.55;
 const VISION_INFERENCE_INTERVAL_MS = 500;
+let visionLastPersonAlertAt = 0;
+let visionAudioContext = null;
+let visionPersonAlertActive = false;
+const VISION_PERSON_ALERT_COOLDOWN_MS = 8000;
 
 function setVisionStatus(state, message) {
   const status = document.getElementById('visionStatus');
@@ -2623,7 +2678,8 @@ function drawVisionPredictions(predictions) {
     ctx.strokeStyle = '#54e59b';
     ctx.fillStyle = 'rgba(9, 31, 23, 0.82)';
     ctx.strokeRect(x, y, w, h);
-    const label = `${pred.class} ${Math.round(pred.score * 100)}%`;
+    const range = estimateVisionDistance(pred, video);
+    const label = `${pred.class} ${Math.round(pred.score * 100)}%${range != null ? ` · ~${Math.round(range)}m` : ''}`;
     const textW = ctx.measureText(label).width + 10;
     const labelY = Math.max(0, y - 24);
     ctx.fillRect(x, labelY, textW, 23);
@@ -2631,6 +2687,106 @@ function drawVisionPredictions(predictions) {
     ctx.fillText(label, x + 5, labelY + 16);
   });
 }
+
+
+function setVisionAlertStatus(message, state = 'quiet') {
+  const el = document.getElementById('visionAlertStatus'); if (!el) return;
+  el.textContent = message; el.dataset.state = state;
+}
+function updateVisionDistanceLabels() {
+  ['Person','Vehicle','Cycle'].forEach(group => {
+    const input=document.getElementById(`vision${group}Distance`), label=document.getElementById(`vision${group}DistanceValue`);
+    if(input&&label) label.textContent=`${input.value} m`;
+  });
+}
+['visionPersonDistance','visionVehicleDistance','visionCycleDistance'].forEach(id=>document.getElementById(id)?.addEventListener('input',updateVisionDistanceLabels));
+updateVisionDistanceLabels();
+function visionCategory(p) {
+  if(p.class==='person') return 'person';
+  if(['car','motorcycle','bus','truck'].includes(p.class)) return 'vehicle';
+  if(p.class==='bicycle') return 'cycle';
+  return null;
+}
+function visionCategoryLabel(c) { return c==='person'?'persona':c==='vehicle'?'vehicle':'bicicleta/patinet'; }
+function visionDistanceThreshold(c) {
+  const id=c==='person'?'visionPersonDistance':c==='vehicle'?'visionVehicleDistance':'visionCycleDistance';
+  return Number(document.getElementById(id)?.value || (c==='person'?5:c==='vehicle'?8:4));
+}
+function visionCategoryEnabled(c) {
+  const id=c==='person'?'visionPersonAlert':c==='vehicle'?'visionVehicleAlert':'visionCycleAlert';
+  return Boolean(document.getElementById(id)?.checked);
+}
+// Estimate range from apparent object height and typical dimensions. Camera FOV is assumed, not calibrated.
+function estimateVisionDistance(prediction, video) {
+  const h=prediction.bbox[3]; if(!video?.videoHeight||h<=0) return null;
+  const typicalHeightM={person:1.7,car:1.45,motorcycle:1.2,bus:3.1,truck:3.2,bicycle:1.1}[prediction.class];
+  if(!typicalHeightM) return null;
+  const fov=50*Math.PI/180, focalPixels=video.videoHeight/(2*Math.tan(fov/2));
+  return Math.max(0.5,Math.min(80,(typicalHeightM*focalPixels)/h));
+}
+let visionLastAlertAtByCategory={person:0,vehicle:0,cycle:0};
+const VISION_CATEGORY_COOLDOWN_MS=4500;
+// reuse the audio context declared in the existing vision state block
+function playVisionAlertTone() {
+  try {
+    const Ctx=window.AudioContext||window.webkitAudioContext; if(!Ctx) return false;
+    if(!visionAudioContext) visionAudioContext=new Ctx();
+    if(visionAudioContext.state==='suspended') visionAudioContext.resume();
+    const ctx=visionAudioContext,now=ctx.currentTime;
+    [0,0.22].forEach(offset=>{const osc=ctx.createOscillator(),gain=ctx.createGain();osc.type='sine';osc.frequency.value=880;gain.gain.setValueAtTime(0.0001,now+offset);gain.gain.exponentialRampToValueAtTime(0.16,now+offset+0.025);gain.gain.exponentialRampToValueAtTime(0.0001,now+offset+0.14);osc.connect(gain);gain.connect(ctx.destination);osc.start(now+offset);osc.stop(now+offset+0.15);});
+    return true;
+  } catch(_){return false;}
+}
+function triggerVisionObjectAlert(prediction,category,distanceM) {
+  if(!visionCategoryEnabled(category)) return;
+  const now=Date.now(); if(now-(visionLastAlertAtByCategory[category]||0)<VISION_CATEGORY_COOLDOWN_MS) return;
+  visionLastAlertAtByCategory[category]=now;
+  const soundOn=document.getElementById('visionSoundAlert')?.checked, vibrationOn=document.getElementById('visionVibrationAlert')?.checked, haloOn=document.getElementById('visionOverlayAlert')?.checked;
+  if(soundOn) playVisionAlertTone();
+  let vibrationWorked=false; if(vibrationOn&&typeof navigator.vibrate==='function'){try{vibrationWorked=navigator.vibrate([160,90,160]);}catch(_){}}
+  if(haloOn){document.documentElement.classList.add('vision-person-warning');window.setTimeout(()=>document.documentElement.classList.remove('vision-person-warning'),1800);}
+  setVisionAlertStatus(`Atenció: ${visionCategoryLabel(category)} detectat/da a una distància visual estimada d'uns ${Math.round(distanceM)} m (${Math.round(prediction.score*100)}% confiança del model). No és una mesura real ni calibrada.`+(vibrationOn&&!vibrationWorked?' La vibració no està disponible en aquest dispositiu/navegador.':''),'warning');
+}
+function assessVisionObjectRisk(predictions,video) {
+  const candidates=predictions.map(p=>{
+    const category=visionCategory(p); if(!category||p.score<0.62) return null;
+    const [x,y,w,h]=p.bbox,centerX=x+w/2;
+    const inForwardZone=centerX>video.videoWidth*0.18&&centerX<video.videoWidth*0.82&&y+h>video.videoHeight*0.42;
+    if(!inForwardZone) return null;
+    const distanceM=estimateVisionDistance(p,video);
+    if(distanceM==null||distanceM>visionDistanceThreshold(category)) return null;
+    return {prediction:p,category,distanceM};
+  }).filter(Boolean).sort((a,b)=>a.distanceM-b.distanceM);
+  candidates.forEach(item=>triggerVisionObjectAlert(item.prediction,item.category,item.distanceM));
+  return candidates;
+}
+function setSpeedView(view) {
+  const screen = document.getElementById('speedScreen');
+  const dashboard = document.getElementById('dashboardViewBtn');
+  const vision = document.getElementById('visionViewBtn');
+  const isVision = view === 'vision';
+  screen?.classList.toggle('vision-mode', isVision);
+  dashboard?.setAttribute('aria-selected', String(!isVision));
+  vision?.setAttribute('aria-selected', String(isVision));
+}
+document.getElementById('dashboardViewBtn')?.addEventListener('click', () => setSpeedView('dashboard'));
+document.getElementById('visionViewBtn')?.addEventListener('click', () => setSpeedView('vision'));
+(function bindSpeedViewSwipe() {
+  const screen = document.getElementById('speedScreen');
+  if (!screen) return;
+  let startX = 0, startY = 0;
+  screen.addEventListener('touchstart', e => {
+    if (!e.touches || e.touches.length !== 1) return;
+    startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+  }, { passive: true });
+  screen.addEventListener('touchend', e => {
+    if (!e.changedTouches || !e.changedTouches.length) return;
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    setSpeedView(dx < 0 ? 'vision' : 'dashboard');
+  }, { passive: true });
+})();
 
 async function runVisionDetection(now = 0) {
   if (!visionStream || !visionModel || !visionLoopRunning) return;
@@ -2645,12 +2801,13 @@ async function runVisionDetection(now = 0) {
     if (!visionLoopRunning) return;
     visionPredictions = predictions.filter(p => p.score >= VISION_MIN_SCORE);
     drawVisionPredictions(visionPredictions);
+    const closeObjects = assessVisionObjectRisk(visionPredictions, video);
     const labels = [...new Set(visionPredictions.map(p => {
       const name = p.class.replace(/_/g, ' ');
       return `${name} · ${Math.round(p.score * 100)}%`;
     }))];
     setVisionSummary(labels, 'Cap objecte detectat');
-    setVisionStatus('active', `Detecció experimental activa: ${visionPredictions.length} objecte(s). Això no és un sistema de prevenció de col·lisions i pot fallar.`);
+    setVisionStatus('active', `Detecció experimental: ${visionPredictions.length} objecte(s). ${closeObjects.length ? closeObjects.length + ' dins del llindar configurat.' : 'Cap objecte dins dels llindars configurats.'} Distàncies aproximades, no calibrades.`);
   } catch (error) {
     visionLoopRunning = false;
     setVisionStatus('error', 'S’ha aturat l’anàlisi d’imatge. Atura i reactiva la càmera per tornar-ho a provar.');
@@ -2661,6 +2818,11 @@ async function runVisionDetection(now = 0) {
 }
 
 async function startVisionCamera() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx && !visionAudioContext) visionAudioContext = new Ctx();
+    if (visionAudioContext?.state === 'suspended') await visionAudioContext.resume();
+  } catch (_) {}
   const video = document.getElementById('visionPreview');
   if (visionStream) return;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -2721,6 +2883,8 @@ function stopVisionCamera(updateStatus = true) {
   const video = document.getElementById('visionPreview');
   if (video) video.srcObject = null;
   setVisionControls(false);
+  visionPersonAlertActive = false;
+  setVisionAlertStatus('Alertes en espera. Activa la càmera per començar.', 'quiet');
   if (updateStatus) setVisionStatus('idle', 'Càmera i anàlisi aturades. Activa-les només amb el vehicle aturat.');
 }
 
@@ -2761,7 +2925,7 @@ setInterval(() => {
 </script>
 <script>
 if ("serviceWorker" in navigator) {
-  // SpeedGuard V45 — force Service Worker refresh and recover from stale caches
+  // SpeedGuard V47 — force Service Worker refresh and recover from stale caches
   if ('serviceWorker' in navigator) {
     let sgReloadedAfterUpdate = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -2769,9 +2933,9 @@ if ("serviceWorker" in navigator) {
       sgReloadedAfterUpdate = true;
       window.location.reload();
     });
-    navigator.serviceWorker.register('./sw.js?v=44', { updateViaCache: 'none' })
+    navigator.serviceWorker.register('./sw.js?v=46', { updateViaCache: 'none' })
       .then(reg => {
-        console.log('SpeedGuard SW V45 registered', reg);
+        console.log('SpeedGuard SW V47 registered', reg);
         reg.update().catch(() => {});
       })
       .catch(e => console.warn('SW err', e));
