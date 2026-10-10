@@ -646,7 +646,7 @@ body.driving-mode #drivingRadarHUD{display:block}
     .halo-preset-row { display:flex; gap:6px; margin-top:9px; }
     .halo-preset-row button { flex:1; min-height:38px; }
 
-    /* ── V44 VISION PROTOTYPE ─────────────────── */
+    /* ── V45 VISION OBJECT DETECTION PROTOTYPE ─── */
     .vision-panel{margin:10px 0;padding:11px;border:1px solid #293b49;border-radius:12px;background:linear-gradient(145deg,rgba(15,28,40,.96),rgba(8,10,17,.96));color:var(--text)}
     .vision-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
     .vision-title{font-size:12px;font-weight:800;letter-spacing:.7px}
@@ -655,6 +655,10 @@ body.driving-mode #drivingRadarHUD{display:block}
     .vision-video-wrap{position:relative;display:none;overflow:hidden;border-radius:9px;background:#03060a;aspect-ratio:4/3;border:1px solid #243341;margin-bottom:8px}
     .vision-video-wrap.active{display:block}
     #visionPreview{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(1)}
+    #visionOverlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+    .vision-detection-summary{display:flex;flex-wrap:wrap;gap:5px;margin:7px 0}
+    .vision-chip{font-size:9px;padding:4px 6px;border:1px solid #275b46;border-radius:6px;background:#10251d;color:#a4f4c8}
+    .vision-chip.neutral{border-color:#344354;background:#101923;color:#b8c9d8}
     .vision-video-label{position:absolute;left:7px;top:7px;padding:4px 6px;border-radius:5px;background:rgba(0,0,0,.7);color:#9ce8ff;font-size:9px;font-weight:800;letter-spacing:.5px}
     .vision-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}
     .vision-actions button{min-height:39px;border-radius:8px;font-size:10px;font-weight:800}
@@ -687,7 +691,7 @@ body.driving-mode #drivingRadarHUD{display:block}
   <div id="titleBar">
     <div class="tb-left">
       <div class="tb-dot" id="statusDot"></div>
-      <img class="tb-logo" src="logo-mark.png" alt="" aria-hidden="true"><span class="tb-title">SPEEDGUARD <span class="app-version">V44</span></span>
+      <img class="tb-logo" src="logo-mark.png" alt="" aria-hidden="true"><span class="tb-title">SPEEDGUARD <span class="app-version">V45</span></span>
     </div>
     <div class="tb-actions">
       <button class="tb-btn" id="minimizeBtn" title="Minimizar">_</button>
@@ -756,18 +760,20 @@ body.driving-mode #drivingRadarHUD{display:block}
         <span>ESTADO</span><strong id="driveStatusText">LISTO</strong>
       </div>
 
-      <!-- V44: experimental camera capture; no hazard alerts until detector validation -->
+      <!-- V45: experimental object detection; no hazard alerts enabled -->
       <section id="visionPanel" class="vision-panel" aria-labelledby="visionTitle">
-        <div class="vision-head"><span id="visionTitle" class="vision-title">👁 VISIÓ ARTIFICIAL</span><span class="vision-tag">PROTOTIP V44</span></div>
-        <p class="vision-description">Prova experimental de càmera frontal de carretera. En aquesta versió només validem la captura; encara no detecta ni avisa de perills.</p>
+        <div class="vision-head"><span id="visionTitle" class="vision-title">👁 VISIÓ ARTIFICIAL</span><span class="vision-tag">DETECCIÓ V45</span></div>
+        <p class="vision-description">Prototip experimental: detecta objectes comuns a la imatge i dibuixa requadres. No avalua encara el risc real ni emet avisos de perill.</p>
         <div id="visionVideoWrap" class="vision-video-wrap">
           <video id="visionPreview" autoplay muted playsinline aria-label="Vista de la càmera posterior orientada a la carretera"></video>
-          <span class="vision-video-label">CÀMERA EN DIRECTE</span>
+          <canvas id="visionOverlay" aria-hidden="true"></canvas>
+          <span class="vision-video-label">CÀMERA + DETECCIÓ EXPERIMENTAL</span>
         </div>
         <div class="vision-actions">
           <button id="visionStart" type="button">▶ ACTIVAR CÀMERA</button>
           <button id="visionStop" type="button" disabled>■ ATURAR CÀMERA</button>
         </div>
+        <div id="visionDetectionSummary" class="vision-detection-summary"><span class="vision-chip neutral">Model no carregat</span></div>
         <div id="visionStatus" class="vision-status" data-state="idle" role="status" aria-live="polite"><span class="vision-status-dot" aria-hidden="true"></span><span id="visionStatusText">Càmera desactivada. Activa-la només amb el vehicle aturat.</span></div>
         <div class="vision-note">La càmera necessita permís i HTTPS. En segon pla, iOS pot suspendre la captura. No utilitzis aquesta prova com a sistema de seguretat durant la conducció.</div>
       </section>
@@ -2500,10 +2506,18 @@ function resetHaloSettings(){ haloSettings={...DEFAULT_HALO_SETTINGS}; applyHalo
 applyHaloSettings();
 
 // ══════════════════════════════════════════════════════════════════
-//  V44 — VISION CAMERA CAPTURE (prototype only; no hazard detection)
+//  V45 — VISION OBJECT DETECTION (experimental; detections only)
 // ══════════════════════════════════════════════════════════════════
 let visionStream = null;
 let visionWasActiveBeforeHidden = false;
+let visionModel = null;
+let visionLoopRunning = false;
+let visionLastInference = 0;
+let visionPredictions = [];
+let visionModelLoading = false;
+let visionInferenceBusy = false;
+const VISION_MIN_SCORE = 0.55;
+const VISION_INFERENCE_INTERVAL_MS = 500;
 
 function setVisionStatus(state, message) {
   const status = document.getElementById('visionStatus');
@@ -2519,6 +2533,131 @@ function setVisionControls(active) {
   if (start) start.disabled = active;
   if (stop) stop.disabled = !active;
   if (wrap) wrap.classList.toggle('active', active);
+}
+
+function setVisionSummary(labels, neutralText) {
+  const el = document.getElementById('visionDetectionSummary');
+  if (!el) return;
+  if (!labels || !labels.length) {
+    el.innerHTML = '<span class="vision-chip neutral"></span>';
+    el.firstElementChild.textContent = neutralText || 'Cap objecte detectat';
+    return;
+  }
+  el.replaceChildren();
+  labels.slice(0, 6).forEach(label => {
+    const chip = document.createElement('span');
+    chip.className = 'vision-chip';
+    chip.textContent = label;
+    el.appendChild(chip);
+  });
+  if (labels.length > 6) {
+    const extra = document.createElement('span');
+    extra.className = 'vision-chip neutral';
+    extra.textContent = '+' + (labels.length - 6);
+    el.appendChild(extra);
+  }
+}
+
+function loadVisionScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = Array.from(document.scripts).find(s => s.src === src);
+    if (existing) {
+      if (existing.dataset.loaded === 'true') return resolve();
+      existing.addEventListener('load', resolve, { once: true });
+      existing.addEventListener('error', reject, { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => { script.dataset.loaded = 'true'; resolve(); };
+    script.onerror = () => reject(new Error('No s’ha pogut carregar el component de visió.'));
+    document.head.appendChild(script);
+  });
+}
+
+async function loadVisionModel() {
+  if (visionModel) return visionModel;
+  if (visionModelLoading) {
+    while (visionModelLoading) await new Promise(resolve => setTimeout(resolve, 150));
+    if (visionModel) return visionModel;
+    throw new Error('No s’ha pogut inicialitzar el model de visió.');
+  }
+  visionModelLoading = true;
+  setVisionStatus('warning', 'Carregant el motor d’intel·ligència artificial. Cal connexió a internet la primera vegada…');
+  setVisionSummary([], 'Carregant model…');
+  try {
+    await loadVisionScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');
+    await loadVisionScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js');
+    if (!window.tf || !window.cocoSsd) throw new Error('No s’ha pogut inicialitzar el model.');
+    try { await window.tf.setBackend('webgl'); await window.tf.ready(); }
+    catch (_) { await window.tf.setBackend('cpu'); await window.tf.ready(); }
+    visionModel = await window.cocoSsd.load({ base: 'lite_mobilenet_v2' });
+    setVisionSummary([], 'Model carregat');
+    return visionModel;
+  } finally {
+    visionModelLoading = false;
+  }
+}
+
+function clearVisionOverlay() {
+  const canvas = document.getElementById('visionOverlay');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawVisionPredictions(predictions) {
+  const video = document.getElementById('visionPreview');
+  const canvas = document.getElementById('visionOverlay');
+  if (!video || !canvas || !video.videoWidth || !video.videoHeight) return;
+  if (canvas.width !== video.videoWidth) canvas.width = video.videoWidth;
+  if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.lineWidth = Math.max(2, canvas.width / 320);
+  ctx.font = `bold ${Math.max(13, canvas.width / 32)}px system-ui, sans-serif`;
+  predictions.forEach(pred => {
+    if (pred.score < VISION_MIN_SCORE) return;
+    const [x, y, w, h] = pred.bbox;
+    ctx.strokeStyle = '#54e59b';
+    ctx.fillStyle = 'rgba(9, 31, 23, 0.82)';
+    ctx.strokeRect(x, y, w, h);
+    const label = `${pred.class} ${Math.round(pred.score * 100)}%`;
+    const textW = ctx.measureText(label).width + 10;
+    const labelY = Math.max(0, y - 24);
+    ctx.fillRect(x, labelY, textW, 23);
+    ctx.fillStyle = '#baffd7';
+    ctx.fillText(label, x + 5, labelY + 16);
+  });
+}
+
+async function runVisionDetection(now = 0) {
+  if (!visionStream || !visionModel || !visionLoopRunning) return;
+  requestAnimationFrame(runVisionDetection);
+  if (now - visionLastInference < VISION_INFERENCE_INTERVAL_MS || visionInferenceBusy) return;
+  const video = document.getElementById('visionPreview');
+  if (!video || video.readyState < 2 || !video.videoWidth) return;
+  visionLastInference = now;
+  visionInferenceBusy = true;
+  try {
+    const predictions = await visionModel.detect(video, 20, VISION_MIN_SCORE);
+    if (!visionLoopRunning) return;
+    visionPredictions = predictions.filter(p => p.score >= VISION_MIN_SCORE);
+    drawVisionPredictions(visionPredictions);
+    const labels = [...new Set(visionPredictions.map(p => {
+      const name = p.class.replace(/_/g, ' ');
+      return `${name} · ${Math.round(p.score * 100)}%`;
+    }))];
+    setVisionSummary(labels, 'Cap objecte detectat');
+    setVisionStatus('active', `Detecció experimental activa: ${visionPredictions.length} objecte(s). Això no és un sistema de prevenció de col·lisions i pot fallar.`);
+  } catch (error) {
+    visionLoopRunning = false;
+    setVisionStatus('error', 'S’ha aturat l’anàlisi d’imatge. Atura i reactiva la càmera per tornar-ho a provar.');
+    console.warn('SpeedGuard Vision detection error:', error);
+  } finally {
+    visionInferenceBusy = false;
+  }
 }
 
 async function startVisionCamera() {
@@ -2542,14 +2681,23 @@ async function startVisionCamera() {
     video.srcObject = visionStream;
     await video.play();
     setVisionControls(true);
-    setVisionStatus('active', 'Càmera activa. Captura en prova; encara no s’analitzen els perills.');
     const track = visionStream.getVideoTracks()[0];
     if (track) track.addEventListener('ended', () => {
-      visionStream = null;
-      if (video) video.srcObject = null;
-      setVisionControls(false);
-      setVisionStatus('error', 'La captura de càmera s’ha aturat. Torna-la a activar quan sigui segur.');
+      stopVisionCamera(false);
+      setVisionStatus('error', 'La captura de càmera s’ha aturat. Reactiva-la només quan estiguis aturat.');
     });
+    try {
+      await loadVisionModel();
+      if (!visionStream) return;
+      visionLoopRunning = true;
+      visionLastInference = 0;
+      setVisionStatus('active', 'Càmera i model actius. Detectant objectes; sense avisos de perill.');
+      requestAnimationFrame(runVisionDetection);
+    } catch (modelError) {
+      setVisionSummary([], 'Model no disponible');
+      setVisionStatus('error', 'La càmera funciona, però no s’ha pogut carregar el model. Comprova la connexió a internet i torna-ho a provar.');
+      console.warn('SpeedGuard Vision model error:', modelError);
+    }
   } catch (error) {
     stopVisionCamera(false);
     let message = 'No s’ha pogut activar la càmera. Comprova els permisos i torna-ho a provar.';
@@ -2562,6 +2710,10 @@ async function startVisionCamera() {
 }
 
 function stopVisionCamera(updateStatus = true) {
+  visionLoopRunning = false;
+  visionPredictions = [];
+  clearVisionOverlay();
+  setVisionSummary([], visionModel ? 'Model carregat · anàlisi aturada' : 'Model no carregat');
   if (visionStream) {
     visionStream.getTracks().forEach(track => track.stop());
     visionStream = null;
@@ -2569,7 +2721,7 @@ function stopVisionCamera(updateStatus = true) {
   const video = document.getElementById('visionPreview');
   if (video) video.srcObject = null;
   setVisionControls(false);
-  if (updateStatus) setVisionStatus('idle', 'Càmera desactivada. Activa-la només amb el vehicle aturat.');
+  if (updateStatus) setVisionStatus('idle', 'Càmera i anàlisi aturades. Activa-les només amb el vehicle aturat.');
 }
 
 document.getElementById('visionStart')?.addEventListener('click', startVisionCamera);
@@ -2581,7 +2733,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden && visionStream) {
     visionWasActiveBeforeHidden = true;
     stopVisionCamera(false);
-    setVisionStatus('warning', 'Captura aturada en sortir de l’app. iOS no garanteix la càmera en segon pla; reactiva-la quan estiguis aturat.');
+    setVisionStatus('warning', 'Captura i anàlisi aturades en sortir de l’app. iOS no garanteix la càmera en segon pla; reactiva-les quan estiguis aturat.');
   } else if (!document.hidden && visionWasActiveBeforeHidden) {
     visionWasActiveBeforeHidden = false;
     setVisionStatus('warning', 'La captura no s’ha reprès automàticament. Reactiva la càmera manualment quan sigui segur.');
@@ -2609,7 +2761,7 @@ setInterval(() => {
 </script>
 <script>
 if ("serviceWorker" in navigator) {
-  // SpeedGuard V44 — force Service Worker refresh and recover from stale caches
+  // SpeedGuard V45 — force Service Worker refresh and recover from stale caches
   if ('serviceWorker' in navigator) {
     let sgReloadedAfterUpdate = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -2619,7 +2771,7 @@ if ("serviceWorker" in navigator) {
     });
     navigator.serviceWorker.register('./sw.js?v=44', { updateViaCache: 'none' })
       .then(reg => {
-        console.log('SpeedGuard SW V44 registered', reg);
+        console.log('SpeedGuard SW V45 registered', reg);
         reg.update().catch(() => {});
       })
       .catch(e => console.warn('SW err', e));

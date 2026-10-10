@@ -1,7 +1,7 @@
 {
   "name": "SpeedGuard DGT",
   "short_name": "SpeedGuard",
-  "description": "Control de velocidad y alertas DGT con GPS. Prototip experimental de captura de càmera.",
+  "description": "Control de velocidad y alertas DGT con GPS. Detecció experimental d’objectes amb càmera.",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",
