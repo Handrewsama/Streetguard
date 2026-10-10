@@ -1,0 +1,2630 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SpeedGuard">
+  <title>SpeedGuard DGT</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ok:    #00ff88;
+      --warn:  #ffe500;
+      --orange:#ff9500;
+      --red:   #ff3b30;
+      --deep:  #cc0033;
+      --penal: #bf5fff;
+      --bg:    #0a0a0f;
+      --card:  #111118;
+      --border:#1e1e2e;
+      --text:  #e0e0f0;
+      --muted: #555570;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; overflow: hidden; }
+
+    /* ── SPEEDGUARD EDGE HALO V5 — visible four-side light field ── */
+    #edgeHalo {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2147483647;
+      opacity: 0;
+      transition: opacity .25s ease;
+      --halo-color: #00ff88;
+      --halo-alpha: .92;
+      --halo-width: 18px;
+      --halo-glow: 38px;
+      --halo-speed: 7s;
+      --halo-beam: 42deg;
+      --halo-gradient: 28%;
+      --halo-intensity: 1;
+      --halo-beam-opacity: .95;
+      isolation: isolate;
+    }
+    #edgeHalo.active { opacity: 1; }
+
+    /* A real four-side frame. The second layer fades strongly toward the centre. */
+    #edgeHalo::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border: var(--halo-width) solid var(--halo-color);
+      border-radius: 18px;
+      opacity: calc(var(--halo-alpha) * var(--halo-intensity));
+      box-shadow:
+        0 0 var(--halo-glow) 3px var(--halo-color),
+        0 0 calc(var(--halo-glow) * 1.7) 0 color-mix(in srgb, var(--halo-color) 70%, transparent),
+        inset 0 0 24px var(--halo-color),
+        inset 0 0 65px color-mix(in srgb, var(--halo-color) 48%, transparent),
+        inset 0 0 125px color-mix(in srgb, var(--halo-color) 22%, transparent);
+      filter: brightness(1.15);
+    }
+
+    /* Broad inward gradient, strongest at the edge and progressively softer inside. */
+    #edgeHalo::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 18px;
+      padding: var(--halo-width);
+      background:
+        linear-gradient(to bottom, color-mix(in srgb, var(--halo-color) 92%, transparent), transparent 100%) top / 100% var(--halo-gradient) no-repeat,
+        linear-gradient(to top, color-mix(in srgb, var(--halo-color) 92%, transparent), transparent 100%) bottom / 100% var(--halo-gradient) no-repeat,
+        linear-gradient(to right, color-mix(in srgb, var(--halo-color) 92%, transparent), transparent 100%) left / var(--halo-gradient) 100% no-repeat,
+        linear-gradient(to left, color-mix(in srgb, var(--halo-color) 92%, transparent), transparent 100%) right / var(--halo-gradient) 100% no-repeat;
+      filter: blur(1px) drop-shadow(0 0 var(--halo-glow) var(--halo-color));
+      animation: edgeSpin var(--halo-speed) linear infinite;
+      opacity: var(--halo-beam-opacity);
+      will-change: opacity, filter;
+    }
+
+    @keyframes edgeSpin {
+      0%,100% { filter: blur(1px) drop-shadow(0 0 var(--halo-glow) var(--halo-color)); }
+      50% { filter: blur(1.5px) drop-shadow(0 0 calc(var(--halo-glow) * 1.35) var(--halo-color)); }
+    }
+
+    #edgeHalo.calm    { --halo-alpha:.78; --halo-width:14px; --halo-glow:30px; --halo-speed:9s; }
+    #edgeHalo.warning { --halo-alpha:.92; --halo-width:18px; --halo-glow:42px; --halo-speed:3.8s; }
+    #edgeHalo.urgent  { --halo-alpha:1;   --halo-width:22px; --halo-glow:58px; --halo-speed:1.45s; }
+    #edgeHalo.penal   { --halo-alpha:1;   --halo-width:26px; --halo-glow:72px; --halo-speed:.72s; }
+
+    @media (max-width: 600px) {
+      #edgeHalo { z-index: 2147483647; }
+      #edgeHalo::before, #edgeHalo::after { border-radius: 16px; }
+      #edgeHalo.calm { --halo-width:16px; }
+      #edgeHalo.warning { --halo-width:22px; }
+      #edgeHalo.urgent { --halo-width:28px; }
+      #edgeHalo.penal { --halo-width:32px; }
+    }
+
+    /* ── RADAR DE TRAM ───────────────────────── */
+    .auto-radar-alert{margin:-4px 0 10px;padding:10px 11px;border-radius:11px;border:1px solid #33404a;background:#0d1518;color:#eafcff;font-size:11px;line-height:1.35;font-weight:700}
+    .auto-radar-alert.fixed{border-color:#3b4630;background:#12170e;color:#dfff9b}
+    .auto-radar-alert.average{border-color:#394a63;background:#0d131b;color:#9ed5ff}
+    .auto-radar-alert.danger{border-color:#633333;background:#1b1010;color:#ff9c9c}
+    .segment-card.auto-hidden .segment-config,.segment-card.auto-hidden .segment-actions{display:none}
+    .segment-card.auto-hidden{padding-top:10px}
+    .segment-card{margin-top:10px;padding:12px;border:1px solid #252536;border-radius:14px;background:rgba(255,255,255,.025)}
+    .segment-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+    .segment-title{font-size:14px;font-weight:800;letter-spacing:1px;color:#e8e8f5}
+    .segment-state{font-size:9px;letter-spacing:1px;color:#666680}
+    .segment-config{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .segment-field label{display:block;font-size:9px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.8px}
+    .segment-field input{width:100%;padding:9px 8px;border:1px solid #2b2b40;border-radius:9px;background:#0c0c13;color:#fff;font:600 15px 'Share Tech Mono',monospace}
+    .segment-actions{display:flex;gap:7px;margin-top:9px}
+    .segment-btn{flex:1;border:1px solid #30404a;border-radius:9px;padding:9px 8px;background:#111a17;color:#00ff88;font-weight:800;font-size:11px}
+    .segment-btn.stop{color:#ff6b6b;border-color:#4a2929;background:#1a1010}
+    .segment-live{display:none;margin-top:10px}
+    .segment-live.active{display:block}
+    .segment-progress-track{height:12px;background:#161621;border-radius:999px;overflow:hidden;border:1px solid #28283a}
+    .segment-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#00ff88,#ffe500);box-shadow:0 0 12px #00ff8866;transition:width .25s linear}
+    .segment-progress-meta{display:flex;justify-content:space-between;margin-top:5px;font:10px 'Share Tech Mono',monospace;color:#77778d}
+    .segment-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
+    .segment-metric{padding:9px;border-radius:10px;background:#0c0c13;border:1px solid #202033;text-align:center}
+    .segment-metric-label{font-size:9px;color:#666680;letter-spacing:.7px}
+    .segment-metric-value{font:700 25px 'Share Tech Mono',monospace;margin-top:2px;color:#f0f0ff}
+    .segment-warning{margin-top:8px;font-size:10px;text-align:center;font-weight:800;letter-spacing:.7px;min-height:14px}
+    @media(max-width:600px){body.driving-mode .segment-card{margin-top:8px}.segment-metric-value{font-size:28px}}
+
+    /* ── FLOATING WINDOW ─────────────────────── */
+    #floatWindow {
+      position: fixed;
+      top: 60px; left: 10px;
+      width: 300px;
+      background: rgba(10,10,15,0.96);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04);
+      backdrop-filter: blur(20px);
+      z-index: 99999;
+      overflow: hidden;
+      transition: border-color 0.3s, box-shadow 0.3s;
+      min-width: 220px; min-height: 160px;
+      max-width: 98vw;
+      resize: both;
+      display: flex;
+      flex-direction: column;
+    }
+    #floatWindow.alert-warn  { border-color: #ffe50055; box-shadow: 0 0 30px #ffe50022; }
+    #floatWindow.alert-bad   { border-color: #ff3b3066; box-shadow: 0 0 40px #ff3b3033; }
+    #floatWindow.alert-penal { border-color: #bf5fff88; box-shadow: 0 0 50px #bf5fff44; animation: pulseGlow 1s infinite; }
+
+    @keyframes pulseGlow {
+      0%,100% { box-shadow: 0 0 40px #bf5fff44; }
+      50%      { box-shadow: 0 0 80px #bf5fff88; }
+    }
+
+    /* ── TITLE BAR (drag handle) ─────────────── */
+    #titleBar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+      cursor: grab; user-select: none; touch-action: none;
+      flex-shrink: 0;
+    }
+    #titleBar:active { cursor: grabbing; }
+    .tb-left { display: flex; align-items: center; gap: 8px; }
+    .tb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+    .app-version { font-size: 9px; letter-spacing: 1px; padding: 2px 5px; margin-left: 4px; border: 1px solid currentColor; border-radius: 5px; opacity: .9; vertical-align: 1px; }
+    .tb-logo { width:28px;height:28px;object-fit:cover;border-radius:7px;flex:0 0 auto;box-shadow:0 0 8px rgba(0,180,255,.28); }
+    .tb-left { display:flex;align-items:center;gap:7px;min-width:0; }
+    .tb-title { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 2px; color: var(--ok); }
+    .tb-actions { display: flex; gap: 6px; }
+    .tb-btn {
+      width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); cursor: pointer; font-size: 12px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .tb-btn:active { background: rgba(255,255,255,0.08); }
+
+    /* ── CONTENT ─────────────────────────────── */
+    #mainContent { flex: 1; overflow-y: auto; overflow-x: hidden; }
+    #mainContent::-webkit-scrollbar { width: 3px; }
+    #mainContent::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── SCREENS ─────────────────────────────── */
+    .screen { display: none; padding: 12px; }
+    .screen.active { display: block; }
+
+    /* ── SPEED DISPLAY ───────────────────────── */
+    #speedScreen {}
+    .speed-hero {
+      text-align: center; padding: 16px 0 8px;
+      position: relative;
+    }
+    .speed-value {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 72px; line-height: 1; font-weight: bold;
+      transition: color 0.3s, text-shadow 0.3s;
+    }
+    .speed-unit { font-size: 13px; letter-spacing: 4px; color: var(--muted); margin-top: 2px; }
+
+    .limit-bar {
+      display: flex; align-items: center; gap: 8px; margin: 10px 0;
+    }
+    .limit-badge {
+      width: 44px; height: 44px; border-radius: 50%;
+      border: 3px solid #cc0000;
+      background: white; color: #111;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 14px; font-weight: bold;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .limit-bar-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .limit-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s, background 0.3s; }
+    .excess-badge {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px; min-width: 48px; text-align: right;
+    }
+
+    /* ── SANCIÓN CARD ────────────────────────── */
+    .sancion-card {
+      border-radius: 12px; padding: 10px 12px; margin: 6px 0;
+      border: 1px solid transparent;
+      transition: all 0.35s;
+    }
+    .sancion-label { font-size: 15px; font-weight: 700; letter-spacing: 1px; }
+    .sancion-desc  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .sancion-row   { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .sancion-pill  {
+      padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+      border: 1px solid rgba(255,255,255,0.1);
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .pill-multa  { background: rgba(255,149,0,0.15);  color: #ff9500; }
+    .pill-puntos { background: rgba(255,59,48,0.15);  color: #ff3b30; }
+    .pill-carcel { background: rgba(191,95,255,0.15); color: #bf5fff; }
+    .pill-ok     { background: rgba(0,255,136,0.12);  color: #00ff88; }
+    .sancion-nota { font-size: 10px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+
+    /* ── VÍA SELECTOR ────────────────────────── */
+    .via-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px;
+    }
+    .via-btn {
+      background: transparent; border: 1px solid var(--border);
+      border-radius: 10px; padding: 8px 6px; cursor: pointer;
+      color: var(--muted); text-align: center; font-family: 'Rajdhani', sans-serif;
+      font-size: 12px; font-weight: 600; transition: all 0.2s;
+      touch-action: manipulation;
+    }
+    .via-btn.active { background: rgba(0,255,136,0.08); border-color: #00ff8866; color: var(--ok); }
+    .via-btn .via-icon { font-size: 18px; display: block; margin-bottom: 2px; }
+    .via-btn .via-limit { font-family: 'Share Tech Mono', monospace; font-size: 14px; }
+
+    .maintenance-controls{display:grid;grid-template-columns:1fr;gap:6px;margin:8px 0 10px;padding:9px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.025)}
+    .maintenance-btn{width:100%;padding:9px 10px;border:1px solid #31515b;border-radius:8px;background:#101e24;color:#d9f8ff;font:700 11px/1.3 inherit;letter-spacing:.2px;text-align:left;cursor:pointer;min-height:38px}
+    .maintenance-btn:disabled{opacity:.55;cursor:wait}
+    #maintenanceStatus{font-size:10px;line-height:1.35;color:var(--muted);min-height:13px}
+    /* ── GPS STATUS ──────────────────────────── */
+    .gps-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 12px; background: rgba(255,255,255,0.02);
+      border-top: 1px solid var(--border); font-size: 10px;
+      font-family: 'Share Tech Mono', monospace; flex-shrink: 0;
+    }
+    .gps-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+    .gps-dot.ok      { background: var(--ok);  box-shadow: 0 0 4px var(--ok); animation: blink 2s infinite; }
+    .gps-dot.waiting { background: var(--warn); box-shadow: 0 0 4px var(--warn); animation: blink 1s infinite; }
+    .gps-dot.error   { background: var(--red);  box-shadow: 0 0 4px var(--red); }
+    .health-indicators{display:flex;gap:5px;flex-wrap:wrap;padding:5px 9px;background:rgba(255,255,255,.025);border-top:1px solid var(--border);font:9px 'Share Tech Mono',monospace}
+    .health-chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:999px;padding:4px 7px;color:var(--muted);white-space:nowrap}
+    .health-chip::before{content:'';width:6px;height:6px;border-radius:50%;background:#89909a;display:inline-block}
+    .health-chip.ok{color:var(--ok);border-color:#00ff8844}.health-chip.ok::before{background:var(--ok)}
+    .health-chip.warn{color:var(--warn);border-color:#ffbf0044}.health-chip.warn::before{background:var(--warn)}
+    .health-chip.error{color:var(--red);border-color:#ff4b4b44}.health-chip.error::before{background:var(--red)}
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* ── NAV TABS ────────────────────────────── */
+
+    .analysis-map{width:100%;height:390px;display:block;background:#10191d;border-radius:12px;border:1px solid #294047;touch-action:pan-x pan-y;overflow:hidden}
+    .analysis-map-help{font-size:11px;color:var(--muted);margin:6px 0 10px}
+    .analysis-map-point{font:700 12px Rajdhani,sans-serif}
+    .analysis-point-detail{background:#10191d;color:#f2f5f5;border:1px solid #4fe0a3;border-radius:10px;padding:9px;min-width:155px;font-family:Rajdhani,sans-serif}
+    .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#10191d;color:#f2f5f5}
+    .leaflet-control-attribution{font-size:9px!important}
+    .ribbon-legend{gap:7px!important}
+    .ribbon-legend span{font-size:clamp(12px,3.2vw,15px)!important;font-weight:800!important;letter-spacing:.15px!important;padding:6px 8px!important;min-height:32px;display:inline-flex;align-items:center;gap:5px;border-radius:8px}
+    .ribbon-legend .legend-icon{font-size:16px!important}
+    @media(max-width:380px){.ribbon-legend span{font-size:11px!important;padding:5px 6px!important;gap:3px}}
+    .analysis-stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}
+    .analysis-stat{background:rgba(255,255,255,.045);border:1px solid var(--border);border-radius:10px;padding:10px}
+    .analysis-stat small{display:block;color:var(--muted);font-size:10px}.analysis-stat strong{font-size:20px;color:var(--ok)}
+    .analysis-graph{width:100%;height:auto;background:#10191d;border-radius:12px;display:block}
+    .analysis-event{padding:9px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;justify-content:space-between}
+
+    .nav-tabs {
+      display: flex; border-top: 1px solid var(--border); flex-shrink: 0;
+    }
+    .nav-tab {
+      flex: 1; padding: 8px 4px; background: transparent; border: none;
+      color: var(--muted); font-family: 'Rajdhani', sans-serif; font-size: 11px;
+      font-weight: 600; letter-spacing: 1px; cursor: pointer; text-transform: uppercase;
+      transition: all 0.2s; touch-action: manipulation;
+    }
+    .nav-tab.active { color: var(--ok); background: rgba(0,255,136,0.05); }
+
+    /* ── EDITOR SCREEN ───────────────────────── */
+    #editorScreen {}
+    .section-title {
+      font-size: 11px; letter-spacing: 2px; color: var(--muted);
+      text-transform: uppercase; margin-bottom: 8px; display: flex;
+      align-items: center; justify-content: space-between;
+    }
+    .sancion-editor-item {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px; margin-bottom: 8px;
+    }
+    .editor-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+    .editor-label { font-size: 10px; color: var(--muted); min-width: 60px; }
+    .editor-input {
+      flex: 1; background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 8px; color: var(--text);
+      font-family: 'Share Tech Mono', monospace; font-size: 12px;
+      outline: none; transition: border-color 0.2s;
+    }
+    .editor-input:focus { border-color: var(--ok); }
+    .editor-check { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; }
+    .editor-check input[type=checkbox] { accent-color: var(--penal); width: 16px; height: 16px; }
+    .save-btn {
+      width: 100%; padding: 10px; background: rgba(0,255,136,0.12);
+      border: 1px solid rgba(0,255,136,0.3); border-radius: 10px;
+      color: var(--ok); font-family: 'Rajdhani', sans-serif; font-size: 14px;
+      font-weight: 700; letter-spacing: 2px; cursor: pointer; margin-top: 8px;
+      transition: all 0.2s;
+    }
+    .save-btn:active { background: rgba(0,255,136,0.25); }
+    .dgt-link {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 10px; background: rgba(0,180,255,0.08);
+      border: 1px solid rgba(0,180,255,0.25); border-radius: 10px;
+      color: #00b4ff; text-decoration: none; font-size: 13px; font-weight: 600;
+      margin-top: 8px; letter-spacing: 1px;
+    }
+    .reset-btn {
+      width: 100%; padding: 8px; background: rgba(255,59,48,0.08);
+      border: 1px solid rgba(255,59,48,0.25); border-radius: 10px;
+      color: var(--red); font-family: 'Rajdhani', sans-serif; font-size: 12px;
+      font-weight: 600; letter-spacing: 1px; cursor: pointer; margin-top: 6px;
+    }
+
+    /* ── INFO SCREEN ─────────────────────────── */
+    .info-block {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px; margin-bottom: 8px;
+    }
+    .info-block h3 { font-size: 13px; color: var(--ok); margin-bottom: 6px; letter-spacing: 1px; }
+    .info-block p  { font-size: 11px; color: #aaa; line-height: 1.5; }
+    .info-block ul { font-size: 11px; color: #aaa; line-height: 1.8; padding-left: 14px; }
+
+    /* ── OVERLAY TOGGLE (main page button) ───── */
+    #startBtn {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+      padding: 14px 32px; background: rgba(0,255,136,0.12);
+      border: 2px solid rgba(0,255,136,0.4); border-radius: 50px;
+      color: var(--ok); font-family: 'Rajdhani', sans-serif;
+      font-size: 16px; font-weight: 700; letter-spacing: 3px; cursor: pointer;
+      z-index: 9999; transition: all 0.2s;
+    }
+
+    /* ── RESIZE HANDLE ───────────────────────── */
+    .resize-hint {
+      position: absolute; bottom: 24px; right: 4px; width: 12px; height: 12px;
+      border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+      opacity: 0.3; pointer-events: none;
+    }
+
+    /* ── MINIMIZED STATE ─────────────────────── */
+    #floatWindow.minimized { height: 42px !important; overflow: hidden; resize: none; }
+    #floatWindow.minimized #mainContent,
+    #floatWindow.minimized .nav-tabs,
+    #floatWindow.minimized .gps-bar { display: none; }
+
+
+    /* ── DRIVING MODE ───────────────────────────────────── */
+    #driveModeBtn {
+      width:100%; min-height:42px; margin:8px 0 2px; padding:8px 12px;
+      border-radius:12px; border:1px solid rgba(0,255,136,.28);
+      background:rgba(0,255,136,.07); color:var(--ok);
+      font-family:'Rajdhani',sans-serif; font-size:13px; font-weight:700;
+      letter-spacing:1.5px; cursor:pointer; touch-action:manipulation;
+    }
+    #driveModeBtn.active { background:rgba(0,255,136,.16); border-color:rgba(0,255,136,.55); box-shadow:0 0 18px rgba(0,255,136,.08); }
+    .drive-status {
+      display:flex; align-items:center; justify-content:space-between; gap:8px;
+      margin:6px 0 2px; padding:6px 9px; border:1px solid var(--border);
+      border-radius:10px; background:rgba(255,255,255,.025);
+      font-family:'Share Tech Mono',monospace; font-size:10px;
+    }
+    .drive-status strong { font-size:11px; }
+    body.driving-mode #floatWindow { border-color:rgba(0,255,136,.16); }
+    body.driving-mode #titleBar { min-height:40px; }
+    body.driving-mode #speedScreen { padding-top:6px; }
+    body.driving-mode .speed-hero { padding:clamp(3px,1vh,8px) 0 2px; }
+    body.driving-mode .speed-value { font-size:clamp(82px,25vw,132px); line-height:.82; }
+    body.driving-mode .speed-unit { font-size:12px; letter-spacing:5px; margin-top:7px; }
+    body.driving-mode .limit-bar { margin:8px 0 7px; }
+    body.driving-mode .limit-badge { width:58px; height:58px; font-size:18px; border-width:4px; }
+    body.driving-mode .limit-bar-track { height:8px; }
+    body.driving-mode .excess-badge { font-size:16px; min-width:60px; }
+    body.driving-mode #driveModeBtn { background:rgba(255,255,255,.035); border-color:var(--border); color:var(--text); }
+    body.driving-mode #secondaryControls { display:none !important; }
+    body.driving-mode #viaSection { display:none; }
+    body.driving-mode #sancionCard { display:none !important; }
+    body.driving-mode #segmentCard:not(.auto-hidden) { margin-top:8px; }
+    body.driving-mode #roadDiagnostic { margin-top:6px; }
+    body.driving-mode .health-indicators { gap:4px; }
+    body.driving-mode .health-chip { font-size:9px; padding:3px 5px; }
+    body.driving-mode #sancionCard { margin-top:10px; padding:12px 13px; }
+    body.driving-mode .sancion-label { font-size:16px; }
+    body.driving-mode .sancion-desc { font-size:12px; }
+    body.driving-mode .sancion-pill { font-size:13px; padding:5px 11px; }
+    body.driving-mode .sancion-nota { font-size:10px; }
+    @media (max-width:600px), (max-height:700px) {
+      body.driving-mode .speed-hero { padding-top:clamp(4px,1vh,9px); }
+      body.driving-mode .speed-value { font-size:clamp(82px,25vw,132px); }
+      body.driving-mode #sancionCard { margin-bottom:10px; }
+    }
+
+    
+    .nav-tab.trip-finish{color:#fff;background:#9d3028;border-color:#ff6b5f;box-shadow:0 0 10px rgba(255,70,60,.22)}
+    .road-confidence{font-size:10px;font-weight:900;letter-spacing:.4px;padding:5px 8px;border-radius:6px;margin-top:5px;background:rgba(255,149,0,.12);color:#ffbf69}
+    .road-confidence.ok{background:rgba(0,255,136,.10);color:#00ff88}
+    .road-confidence.warn{background:rgba(255,229,0,.12);color:#ffe500}
+    .road-confidence.bad{background:rgba(255,59,48,.12);color:#ff716a}
+
+    /* ── FULL-WIDTH COMPASS + RADAR MARKERS V22 ─────────── */
+    #drhCompassWrap{display:block;width:100%;box-sizing:border-box;padding:7px 0 6px;margin:0;border-bottom:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(0,255,136,.07),rgba(0,0,0,.12));overflow:hidden}
+    .direction-ribbon-head{display:flex;align-items:baseline;justify-content:center;gap:10px;padding:0 8px 5px;color:#93a6a9;font:800 10px 'Rajdhani',sans-serif;letter-spacing:1px}
+    .direction-ribbon-head strong{font:900 22px 'Share Tech Mono',monospace;color:#00ff88}
+    #drhDrivingDegrees{font:800 13px 'Share Tech Mono',monospace;color:#eafcff}
+    .direction-ribbon{height:43px;position:relative;width:100%;border-top:1px solid #263739;border-bottom:1px solid #263739;background:linear-gradient(90deg,rgba(0,0,0,.28),rgba(0,255,136,.055),rgba(0,0,0,.28));overflow:hidden}
+    .compass-cardinal{position:absolute;top:17px;transform:translateX(-50%);font:900 13px 'Share Tech Mono',monospace;color:#aebfc2;min-width:12px;text-align:center;transition:left .15s linear}
+    .compass-cardinal.north{color:#00ff88;font-size:15px}
+    .compass-heading-marker{position:absolute;left:50%;top:0;bottom:0;width:2px;background:#00ff88;box-shadow:0 0 8px rgba(0,255,136,.75);transform:translateX(-50%);z-index:3}
+    .compass-heading-marker:before{content:'▼';position:absolute;top:-1px;left:50%;transform:translateX(-50%);font-size:10px;color:#00ff88}
+    .compass-radar-marker{position:absolute;top:1px;transform:translateX(-50%);z-index:4;font-size:18px;line-height:19px;filter:drop-shadow(0 0 4px rgba(0,0,0,.9));display:none}
+    .compass-radar-marker.active{display:block}
+    .compass-radar-marker.fixed{color:#ffe56d}.compass-radar-marker.average{color:#8adfff}
+    .compass-radar-marker .radar-distance{position:absolute;top:19px;left:50%;transform:translateX(-50%);font:900 10px/1.1 'Share Tech Mono',monospace;white-space:nowrap;color:#fff;background:rgba(0,0,0,.88);border:1px solid rgba(255,255,255,.28);border-radius:5px;padding:3px 4px;letter-spacing:-.3px;pointer-events:none}
+    .compass-radar-marker.fixed .radar-distance{border-color:#ffe56d}.compass-radar-marker.average .radar-distance{border-color:#8adfff}
+    .compass-radar-marker.cluster-left .radar-distance{left:0;transform:translateX(-12%)}
+    .compass-radar-marker.cluster-right .radar-distance{left:100%;transform:translateX(-88%)}
+    .ribbon-legend{display:flex;justify-content:space-around;align-items:stretch;gap:6px;padding:8px 5px 2px;font:900 12px 'Rajdhani',sans-serif;color:#718589}
+    .ribbon-legend span{display:flex;align-items:center;justify-content:center;gap:6px;flex:1;min-width:0;text-align:center;white-space:normal;line-height:1.1;padding:8px 5px;border:1px solid #26383b;border-radius:9px;background:rgba(4,12,14,.72);transition:background .15s,border-color .15s,color .15s;min-height:38px;box-sizing:border-box}
+    .ribbon-legend .legend-icon{font-size:22px;line-height:1;flex:0 0 auto}
+    .ribbon-legend .active{color:#00ff88;background:rgba(0,255,136,.12);border-color:#00ff88;box-shadow:0 0 9px rgba(0,255,136,.14)}.ribbon-legend .possible{color:#ffbd70;background:rgba(255,149,0,.13);border-color:#ffad50;box-shadow:0 0 9px rgba(255,149,0,.12)}
+    @media(max-width:390px){.ribbon-legend{gap:3px;padding-left:3px;padding-right:3px}.ribbon-legend span{font-size:11px;gap:3px;padding:7px 2px;min-height:36px}.ribbon-legend .legend-icon{font-size:19px}}
+    .drh-compass-dial,.drh-radar-info,.direction-ribbon-foot{display:none!important}
+
+    /* ── DRIVING RADAR HUD: zero-touch while driving ─────── */
+    #drivingRadarHUD{display:none;position:relative;z-index:1200;margin:0 0 6px;border:0;border-bottom:1px solid rgba(0,255,136,.28);border-radius:0;background:rgba(5,12,12,.94);box-shadow:0 0 22px rgba(0,255,136,.08);overflow:hidden;pointer-events:none}
+    #drivingRadarHUD.visible{display:block}
+    #drivingRadarHUD .drh-alert{padding:10px 12px;font:900 17px/1.25 'Rajdhani',sans-serif;letter-spacing:1px;color:#9ed5ff;border-bottom:1px solid rgba(255,255,255,.06)}
+    #drivingRadarHUD .drh-recovery-row{display:flex;align-items:center;gap:8px;padding:7px 9px;pointer-events:auto;border-bottom:1px solid rgba(255,255,255,.06)}
+    #navRecoverBtn{flex:0 0 auto;min-height:36px;padding:7px 10px;border:1px solid #35b9d9;border-radius:9px;background:#102b34;color:#baf4ff;font:800 11px 'Rajdhani',sans-serif;letter-spacing:.4px;cursor:pointer;touch-action:manipulation}
+    #navRecoverBtn:disabled{opacity:.6}
+    #navRecoverStatus{min-width:0;font:10px/1.25 'Share Tech Mono',monospace;color:#9fb0b2}
+    #drivingRadarHUD.fixed .drh-alert{color:#dfff9b}
+    #drivingRadarHUD.danger .drh-alert{color:#ff8f8f}
+    #drivingRadarHUD .drh-live{padding:8px 10px 9px}
+    #drivingRadarHUD .drh-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:9px;color:#77778d;letter-spacing:1px;margin-bottom:6px}
+    #drivingRadarHUD .drh-title{color:#eafcff;font-size:15px;font-weight:800}
+    #drivingRadarHUD .drh-track{height:9px;border-radius:999px;background:#171722;border:1px solid #28283a;overflow:hidden}
+    #drivingRadarHUD .drh-fill{height:100%;width:0;background:linear-gradient(90deg,#00ff88,#00c8ff);transition:width .25s linear}
+    #drivingRadarHUD .drh-meta{display:flex;justify-content:space-between;margin-top:4px;font:9px 'Share Tech Mono',monospace;color:#77778d}
+    #drivingRadarHUD .drh-metrics{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}
+    #drivingRadarHUD .drh-metric{display:flex;align-items:baseline;justify-content:center;gap:5px;padding:4px 5px;border-radius:8px;background:#0b0b12;border:1px solid #202033}
+    #drivingRadarHUD .drh-label{font-size:8px;color:#666680;letter-spacing:.5px}
+    #drivingRadarHUD .drh-value{font:800 27px 'Share Tech Mono',monospace;color:#00ff88}
+    #drivingRadarHUD .drh-warning{text-align:center;font-size:9px;font-weight:800;letter-spacing:.5px;margin-top:5px;min-height:11px}
+    body.driving-mode #driveModeBtn,body.driving-mode #driveStatus{display:none}
+    #exitDriveBtn{display:none;position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:2147483646;width:auto;max-width:190px;min-height:34px;padding:7px 11px;border-radius:9px;border:1px solid rgba(255,255,255,.24);background:rgba(5,12,12,.88);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#eafcff;font:800 10px 'Rajdhani',sans-serif;letter-spacing:1px;box-shadow:0 4px 18px rgba(0,0,0,.35);pointer-events:auto;touch-action:manipulation}
+    body.driving-mode #exitDriveBtn{display:none}
+    #drhRoute{display:none;padding:7px 9px 8px;border-top:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.12)}
+    #drhRoute.visible{display:block}
+    .route-head{display:flex;justify-content:space-between;align-items:center;font:800 9px 'Rajdhani',sans-serif;letter-spacing:1px;color:#aeb8bb;margin-bottom:5px}
+    .route-line{position:relative;height:18px;margin:0 4px}
+    .route-base{position:absolute;left:0;right:0;top:8px;height:4px;border-radius:9px;background:#242633}
+    .route-progress{position:absolute;left:0;top:8px;height:4px;width:0;border-radius:9px;background:linear-gradient(90deg,#00ff88,#00c8ff);transition:width .3s linear}
+    .route-zone{position:absolute;top:4px;height:12px;border-radius:6px;background:rgba(255,149,0,.38);box-shadow:0 0 8px rgba(255,149,0,.25);display:none}
+    /* V43: Knight Rider-style scanning beam for mobile radar zones */
+    .route-zone.mobile{background:rgba(255,25,45,.28);box-shadow:0 0 8px rgba(255,20,35,.72),inset 0 0 5px rgba(255,70,70,.55);overflow:hidden;animation:none;border:1px solid rgba(255,45,55,.9)}
+    .route-zone.mobile::after{content:"";position:absolute;top:-1px;bottom:-1px;left:0;width:28%;border-radius:5px;background:linear-gradient(90deg,rgba(255,0,25,0),#ff182f 28%,#fff2f2 50%,#ff182f 72%,rgba(255,0,25,0));box-shadow:0 0 7px #ff1b32,0 0 13px rgba(255,20,40,.95);animation:mobileScanner 1.05s ease-in-out infinite alternate;will-change:transform;pointer-events:none}
+    @keyframes mobileScanner{from{transform:translateX(-5%)}to{transform:translateX(265%)}}
+    @media(prefers-reduced-motion:reduce){.route-zone.mobile::after{animation-duration:2.4s}}
+    .route-marker{position:absolute;top:3px;left:0;width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 0 10px rgba(255,255,255,.8);transform:translateX(-50%);transition:left .3s linear}
+    .route-radar{position:absolute;top:2px;width:12px;height:12px;border-radius:50%;background:#dfff9b;border:2px solid #07100f;box-shadow:0 0 0 0 rgba(0,255,136,.8);animation:radarBlink 1s infinite;transform:translateX(-50%);display:none}
+    .route-radar.fixed{background:#ffef70}.route-radar.average{background:#7dd7ff}
+    .route-labels{display:flex;justify-content:space-between;font:8px 'Share Tech Mono',monospace;color:#687277;margin-top:2px}
+    @keyframes radarBlink{0%,100%{box-shadow:0 0 0 0 rgba(0,255,136,.8);opacity:1}50%{box-shadow:0 0 0 7px rgba(0,255,136,0);opacity:.35}}
+    @keyframes routePulse{50%{opacity:.38}}
+    
+    .road-diagnostic{margin:6px 10px 8px;padding:8px 10px;border:1px solid #26363a;border-radius:10px;background:#071011;color:#dffcff;font:800 12px/1.3 'Rajdhani',sans-serif;display:none}
+    .road-diagnostic.visible{display:block}.road-diagnostic.ok{border-color:#1e694d}.road-diagnostic.warn{border-color:#735d1e;color:#ffe9a8}.road-diagnostic.bad{border-color:#6b2d2d;color:#ffaaaa}
+    .road-main{display:flex;justify-content:space-between;gap:8px}.road-name{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.road-limit{font:900 22px 'Share Tech Mono',monospace;color:#00ff88}.road-meta{margin-top:3px;color:#83979b;font-size:10px;letter-spacing:.5px}
+    #tripSummaryModal{display:none;position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.82);padding:18px;overflow:auto}
+    #tripSummaryModal.visible{display:block}.trip-box{max-width:520px;margin:5vh auto;background:#0b1112;border:1px solid #2b4548;border-radius:18px;padding:18px;color:#efffff}.trip-box h2{margin:0 0 8px;font-size:24px}.trip-summary-sub{color:#829497;font-size:12px;margin-bottom:14px}.trip-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:10px 0;border-bottom:1px solid #1d292b;align-items:center}.trip-row .rname{font-weight:900;font-size:15px}.trip-row .rmeta{font-size:10px;color:#809194}.trip-row .rspeed{font:900 22px 'Share Tech Mono',monospace}.trip-close{margin-top:16px;width:100%;padding:13px;border-radius:11px;border:1px solid #345;color:#dff;background:#101b1d;font-weight:900}
+body.driving-mode #drivingRadarHUD{display:block}
+    body.driving-mode #segmentCard{display:none}
+    @media(max-width:600px),(max-height:700px){
+      #drivingRadarHUD{margin:0 0 4px;border-radius:0}
+      #drivingRadarHUD .drh-alert{padding:7px 9px;font-size:11px}
+      #drivingRadarHUD .drh-live{padding:7px 9px 8px}
+      #drivingRadarHUD .drh-value{font-size:20px}
+      #drhCompassWrap{padding:6px 0}
+      .direction-ribbon-head strong{font-size:21px}
+      .direction-ribbon{height:43px}
+      .compass-cardinal{font-size:12px}
+      .ribbon-legend{font-size:9px}
+      .ribbon-legend .legend-icon{font-size:16px}
+    }
+
+    /* ── MOBILE / PHONE LAYOUT ───────────────────────────── */
+    @media (max-width: 600px), (max-height: 700px) {
+      html, body {
+        width: 100%;
+        min-height: 100%;
+        height: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+
+      #floatWindow {
+        position: fixed;
+        top: env(safe-area-inset-top, 0px);
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+        min-height: 0;
+        height: calc(100dvh - env(safe-area-inset-top, 0px));
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+        box-shadow: none;
+        resize: none;
+        overflow: hidden;
+      }
+
+      #titleBar {
+        padding: 7px 10px;
+        min-height: 42px;
+        padding-top: max(7px, env(safe-area-inset-top, 0px));
+      }
+
+      #mainContent {
+        min-height: 0;
+        height: auto;
+        flex: 1 1 auto;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+        padding-bottom: 4px;
+      }
+
+      .screen {
+        padding: 10px 10px calc(14px + env(safe-area-inset-bottom, 0px));
+      }
+
+      .speed-hero { padding: 10px 0 5px; }
+      .speed-value { font-size: clamp(56px, 18vw, 76px); }
+
+      .nav-tabs {
+        min-height: 48px;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        background: rgba(10,10,15,.98);
+      }
+      .nav-tab { min-height: 48px; padding: 8px 2px; font-size: 10px; }
+
+      .gps-bar { min-height: 30px; padding: 5px 9px; }
+
+      #startBtn {
+        bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+        max-width: calc(100vw - 32px);
+      }
+
+      .via-btn { min-height: 44px; }
+      .editor-input { min-height: 36px; font-size: 13px; }
+      .save-btn, .reset-btn, .dgt-link { min-height: 44px; }
+
+      .resize-hint { display: none; }
+    }
+
+    @media (max-width: 380px) {
+      .screen { padding-left: 8px; padding-right: 8px; }
+      .speed-value { font-size: 58px; }
+      .tb-title { font-size: 10px; letter-spacing: 1.5px; }
+      .tb-btn { width: 32px; height: 32px; }
+      .section-title { font-size: 10px; }
+    }
+
+    /* Mobile: the halo must remain visible over the full-screen app, including both side edges. */
+    @media (max-width: 600px) {
+      #edgeHalo {
+        z-index: 100000;
+      }
+      #edgeHalo::before {
+        inset: 0;
+        border-radius: 20px;
+      }
+      #edgeHalo::after {
+        inset: 0;
+        padding: var(--halo-width);
+        border-radius: 20px;
+      }
+    }
+
+    /* Respect iOS/Android reduced-motion preference. */
+    @media (prefers-reduced-motion: reduce) {
+      #edgeHalo::before, #edgeHalo::after, #floatWindow { animation: none !important; transition: none !important; }
+    }
+
+    /* ── HALO SETTINGS ───────────────────────── */
+    .halo-settings { margin-top:14px; padding:12px; border:1px solid var(--border); border-radius:12px; background:rgba(255,255,255,.025); }
+    .halo-setting { margin-top:10px; }
+    .halo-setting:first-child { margin-top:0; }
+    .halo-setting-head { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:11px; color:var(--muted); }
+    .halo-setting-head strong { color:var(--text); font-size:12px; }
+    .halo-range { width:100%; accent-color:var(--ok); margin-top:5px; }
+    .halo-preview { height:58px; margin-top:10px; border-radius:12px; position:relative; overflow:hidden; background:#050509; border:1px solid #222; }
+    .halo-preview::before { content:''; position:absolute; inset:0; border:var(--preview-width,10px) solid var(--preview-color,#00ff88); box-shadow:inset 0 0 var(--preview-glow,24px) var(--preview-color,#00ff88), 0 0 var(--preview-glow,24px) var(--preview-color,#00ff88); opacity:var(--preview-alpha,.9); }
+    .halo-preview::after { content:''; position:absolute; inset:0; background:linear-gradient(to bottom,var(--preview-color,#00ff88),transparent 70%) top/100% var(--preview-gradient,55%) no-repeat,linear-gradient(to top,var(--preview-color,#00ff88),transparent 70%) bottom/100% var(--preview-gradient,55%) no-repeat,linear-gradient(to right,var(--preview-color,#00ff88),transparent 70%) left/var(--preview-gradient,55%) 100% no-repeat,linear-gradient(to left,var(--preview-color,#00ff88),transparent 70%) right/var(--preview-gradient,55%) 100% no-repeat; opacity:.45; pointer-events:none; }
+    .halo-preset-row { display:flex; gap:6px; margin-top:9px; }
+    .halo-preset-row button { flex:1; min-height:38px; }
+
+    /* ── V44 VISION PROTOTYPE ─────────────────── */
+    .vision-panel{margin:10px 0;padding:11px;border:1px solid #293b49;border-radius:12px;background:linear-gradient(145deg,rgba(15,28,40,.96),rgba(8,10,17,.96));color:var(--text)}
+    .vision-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
+    .vision-title{font-size:12px;font-weight:800;letter-spacing:.7px}
+    .vision-tag{font-size:8px;font-weight:800;letter-spacing:.6px;color:#ffcf69;border:1px solid #715a2e;border-radius:20px;padding:3px 6px}
+    .vision-description{font-size:10px;line-height:1.45;color:var(--muted);margin:0 0 9px}
+    .vision-video-wrap{position:relative;display:none;overflow:hidden;border-radius:9px;background:#03060a;aspect-ratio:4/3;border:1px solid #243341;margin-bottom:8px}
+    .vision-video-wrap.active{display:block}
+    #visionPreview{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(1)}
+    .vision-video-label{position:absolute;left:7px;top:7px;padding:4px 6px;border-radius:5px;background:rgba(0,0,0,.7);color:#9ce8ff;font-size:9px;font-weight:800;letter-spacing:.5px}
+    .vision-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+    .vision-actions button{min-height:39px;border-radius:8px;font-size:10px;font-weight:800}
+    #visionStart{border:1px solid #176b86;background:#07394a;color:#a8eeff}
+    #visionStop{border:1px solid #3a3a4a;background:#171722;color:#d4d4e0}
+    .vision-status{display:flex;align-items:flex-start;gap:7px;margin-top:8px;padding:8px;border-radius:8px;background:#0b1119;border:1px solid #202c39;font-size:10px;line-height:1.4;color:#c2d2df}
+    .vision-status-dot{width:7px;height:7px;flex:0 0 7px;margin-top:3px;border-radius:50%;background:#788391}
+    .vision-status[data-state="active"] .vision-status-dot{background:#43e49a;box-shadow:0 0 8px #43e49a}
+    .vision-status[data-state="warning"] .vision-status-dot{background:#ffc65c}
+    .vision-status[data-state="error"] .vision-status-dot{background:#ff6868}
+    .vision-note{font-size:9px;line-height:1.4;color:#818b9b;margin-top:7px}
+    @media(min-width:600px){.vision-video-wrap{max-height:260px}}
+
+    /* Scrollbar */
+    * { scrollbar-width: thin; scrollbar-color: #222 transparent; }
+  
+    .alert-simple-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.alert-toggle{display:flex;align-items:center;gap:7px;min-height:42px;padding:7px 8px;border:1px solid #202033;border-radius:9px;background:#0b0b12;color:#eafcff;font-size:10px;font-weight:700}.alert-toggle input{width:18px;height:18px;accent-color:var(--ok)}.alert-toggle.disabled{opacity:.45}.alert-toggle small{font-size:8px;color:var(--muted)}.alert-source-note{margin-top:9px;padding:8px 9px;border-radius:9px;background:#101017;border:1px solid #262638;color:#77778d;font-size:9px;line-height:1.35}
+</style>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+</head>
+<body>
+<div id="edgeHalo" aria-hidden="true"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     FLOATING WINDOW
+═══════════════════════════════════════════════════════════ -->
+<div id="floatWindow">
+
+  <!-- Title Bar (drag handle) -->
+  <div id="titleBar">
+    <div class="tb-left">
+      <div class="tb-dot" id="statusDot"></div>
+      <img class="tb-logo" src="logo-mark.png" alt="" aria-hidden="true"><span class="tb-title">SPEEDGUARD <span class="app-version">V44</span></span>
+    </div>
+    <div class="tb-actions">
+      <button class="tb-btn" id="minimizeBtn" title="Minimizar">_</button>
+      <button class="tb-btn" id="alwaysOnBtn" title="Siempre visible">📌</button>
+    </div>
+  </div>
+
+  <!-- Driving radar HUD: visible without scroll/touch in driving mode -->
+  <div id="drivingRadarHUD" aria-live="assertive">
+    <div class="drh-compass" id="drhCompassWrap" aria-label="Brúixola a pantalla completa i indicadors de radars">
+      <div class="direction-ribbon-head"><span>RUMB</span><strong id="drhDrivingDirection">—</strong><span id="drhDrivingDegrees">—°</span></div>
+      <div class="direction-ribbon" id="directionRibbon" aria-label="Brúixola">
+        <span class="compass-cardinal north" id="compassN">N</span><span class="compass-cardinal" id="compassE">E</span><span class="compass-cardinal" id="compassS">S</span><span class="compass-cardinal" id="compassW">O</span>
+        <span class="compass-radar-marker fixed" id="compassFixedMarker" title="Radar fix">📷<span class="radar-distance" id="compassFixedDistance">—</span></span>
+        <span class="compass-radar-marker average" id="compassAverageMarker" title="Radar de tram">🚦<span class="radar-distance" id="compassAverageDistance">—</span></span>
+        <div class="compass-heading-marker" aria-hidden="true"></div>
+      </div>
+      <div class="ribbon-legend">
+        <span id="legendFixed"><b class="legend-icon">📷</b> Radar fix</span>
+        <span id="legendAverage"><b class="legend-icon">🚦</b> Radar de tram</span>
+        <span id="legendMobile"><b class="legend-icon">🚓</b> Possible mòbil</span>
+      </div>
+      <div class="drh-compass-dial" id="drhCompassDial" aria-hidden="true" style="display:none"><div class="drh-heading">—</div><div class="drh-arrow" id="drhArrow">▲</div></div>
+      <div class="direction-ribbon-foot" style="display:none"><span id="drhRelativeDirection">RADAR: —</span><strong id="drhRadarType">BUSCANT RADAR</strong><strong id="drhRadarDistance">—</strong><span id="drhRadarLimit">— km/h</span></div>
+    </div>
+    <button id="exitDriveBtn" type="button" onclick="exitDrivingMode()" aria-hidden="true" tabindex="-1">⏹ FINALITZAR TRAJECTE</button>
+    <div class="drh-alert" id="drhAlert">📡 ESCANEJANT RADARS…</div>
+    <div class="drh-recovery-row"><button id="navRecoverBtn" type="button" onclick="recoverFromNavigation()">↻ RECUPERAR RADARS</button><span id="navRecoverStatus" role="status" aria-live="polite">GPS i radars en seguiment</span></div>
+    <div id="drhRoute">
+      <div class="route-head"><span id="drhRouteTitle">RECORRIDO DE CONTROL</span><span id="drhRouteStatus">—</span></div>
+      <div class="route-line"><div class="route-base"></div><div class="route-progress" id="drhRouteProgress"></div><div class="route-zone mobile" id="drhMobileZone"></div><div class="route-radar" id="drhRouteRadar"></div><div class="route-marker" id="drhRouteMarker"></div></div>
+      <div class="route-labels"><span id="drhRouteStart">INICIO</span><span id="drhRouteMiddle">CONTROL</span><span id="drhRouteEnd">FIN</span></div>
+    </div>
+    <div class="drh-live" id="drhLive" style="display:none">
+      <div class="drh-head"><span class="drh-title" id="drhTitle">RADAR DE TRAM</span><span id="drhState">EN CURS</span></div>
+      <div class="drh-track"><div class="drh-fill" id="drhFill"></div></div>
+      <div class="drh-meta"><span id="drhDone">0,00 km</span><span id="drhLeft">0,00 km</span></div>
+      <div class="drh-metrics"><div class="drh-metric"><span class="drh-label">ACTUAL</span><span class="drh-value" id="drhCurrent">0</span></div><div class="drh-metric"><span class="drh-label">MITJANA</span><span class="drh-value" id="drhAverage">0,0</span></div></div>
+      <div class="drh-warning" id="drhWarning"></div>
+    </div>
+  </div>
+  <div id="roadDiagnostic" class="road-diagnostic" aria-live="polite">
+    <div class="road-main"><span class="road-name" id="roadDiagnosticName">VIA NO DETECTADA</span><span class="road-limit" id="roadDiagnosticLimit">—</span></div>
+    <div class="road-meta" id="roadDiagnosticMeta">Esperant GPS…</div>
+    <div class="road-confidence" id="roadConfidence" role="status" aria-live="polite">CONFIANÇA VIA: ESPERANT</div>
+  </div>
+
+  <div id="tripSummaryModal" aria-live="polite">
+    <div class="trip-box">
+      <h2>RESUM DEL VIATGE</h2>
+      <div class="trip-summary-sub" id="tripSummarySub">Radars detectats durant el viatge</div>
+      <div id="tripSummaryRows"></div>
+      <button class="trip-close" type="button" onclick="showTripHistory()">CONSULTAR VIATGES ANTERIORS</button><div id="tripHistoryList" style="margin-top:10px"></div><button class="trip-close" type="button" onclick="closeTripSummary()">TANCAR</button>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div id="mainContent">
+
+    <!-- ── SPEED SCREEN ── -->
+    <div id="speedScreen" class="screen active">
+
+      <!-- Driving mode -->
+      <button id="driveModeBtn" onclick="toggleDrivingMode()">🚗 ACTIVAR MODO CONDUCCIÓN</button>
+      <div id="driveStatus" class="drive-status">
+        <span>ESTADO</span><strong id="driveStatusText">LISTO</strong>
+      </div>
+
+      <!-- V44: experimental camera capture; no hazard alerts until detector validation -->
+      <section id="visionPanel" class="vision-panel" aria-labelledby="visionTitle">
+        <div class="vision-head"><span id="visionTitle" class="vision-title">👁 VISIÓ ARTIFICIAL</span><span class="vision-tag">PROTOTIP V44</span></div>
+        <p class="vision-description">Prova experimental de càmera frontal de carretera. En aquesta versió només validem la captura; encara no detecta ni avisa de perills.</p>
+        <div id="visionVideoWrap" class="vision-video-wrap">
+          <video id="visionPreview" autoplay muted playsinline aria-label="Vista de la càmera posterior orientada a la carretera"></video>
+          <span class="vision-video-label">CÀMERA EN DIRECTE</span>
+        </div>
+        <div class="vision-actions">
+          <button id="visionStart" type="button">▶ ACTIVAR CÀMERA</button>
+          <button id="visionStop" type="button" disabled>■ ATURAR CÀMERA</button>
+        </div>
+        <div id="visionStatus" class="vision-status" data-state="idle" role="status" aria-live="polite"><span class="vision-status-dot" aria-hidden="true"></span><span id="visionStatusText">Càmera desactivada. Activa-la només amb el vehicle aturat.</span></div>
+        <div class="vision-note">La càmera necessita permís i HTTPS. En segon pla, iOS pot suspendre la captura. No utilitzis aquesta prova com a sistema de seguretat durant la conducció.</div>
+      </section>
+
+      <!-- Secondary controls -->
+      <div id="secondaryControls">
+      <!-- GPS / Manual toggle -->
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button class="via-btn active" id="btnGPS" onclick="setInputMode('gps')" style="flex:1;border-radius:8px;padding:6px;">
+          <span style="font-size:16px">📡</span><br>GPS
+        </button>
+        <button class="via-btn" id="btnManual" onclick="setInputMode('manual')" style="flex:1;border-radius:8px;padding:6px;">
+          <span style="font-size:16px">✋</span><br>Manual
+        </button>
+        <button class="via-btn" id="btnOSM" onclick="queryOSMLimit()" style="flex:1;border-radius:8px;padding:6px;" title="Consultar límite OSM">
+          <span style="font-size:16px">🗺</span><br>OSM
+        </button>
+      </div>
+
+      <!-- Manual speed slider (hidden by default) -->
+      <div id="manualControls" style="display:none;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--muted);">Velocidad manual</span>
+          <span id="manualVal" style="font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--ok)">60 km/h</span>
+        </div>
+        <input type="range" min="0" max="250" value="60" id="manualSlider"
+          style="width:100%;accent-color:var(--ok);"
+          oninput="setManualSpeed(this.value)">
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">
+          <button onclick="setManualSpeed(20)"  class="via-btn" style="flex:1;padding:4px;font-size:11px;">20</button>
+          <button onclick="setManualSpeed(30)"  class="via-btn" style="flex:1;padding:4px;font-size:11px;">30</button>
+          <button onclick="setManualSpeed(50)"  class="via-btn" style="flex:1;padding:4px;font-size:11px;">50</button>
+          <button onclick="setManualSpeed(90)"  class="via-btn" style="flex:1;padding:4px;font-size:11px;">90</button>
+          <button onclick="setManualSpeed(120)" class="via-btn" style="flex:1;padding:4px;font-size:11px;">120</button>
+          <button onclick="setManualSpeed(160)" class="via-btn" style="flex:1;padding:4px;font-size:11px;">160</button>
+        </div>
+      </div>
+      <div class="maintenance-controls" aria-label="Actualitzacions manuals">
+        <button type="button" class="maintenance-btn" id="forceRadarsBtn" onclick="forceRefreshRadars()">📷 Actualitzar radars</button>
+        <button type="button" class="maintenance-btn" id="forceDatabaseBtn" onclick="forceRefreshDatabase()">🗺 Actualitzar base de dades</button>
+        <button type="button" class="maintenance-btn" id="forceGPSBtn" onclick="forceGPSReconnect()">📡 Forçar connexió GPS</button>
+        <div id="maintenanceStatus" role="status" aria-live="polite">Actualitzacions manuals disponibles</div>
+      </div>
+      </div><!-- /secondaryControls -->
+
+      <!-- Speed hero -->
+      <div class="speed-hero">
+        <div class="speed-value" id="speedValue">0</div>
+        <div class="speed-unit">KM/H</div>
+      </div>
+
+      <!-- Limit bar -->
+      <div class="limit-bar">
+        <div class="limit-badge" id="limitBadge">–</div>
+        <div class="limit-bar-track">
+          <div class="limit-bar-fill" id="limitBarFill" style="width:0%;background:var(--ok)"></div>
+        </div>
+        <div class="excess-badge" id="excessBadge" style="color:var(--ok)">–</div>
+      </div>
+
+      <!-- Via selector -->
+      <div id="viaSection" style="margin-top:4px;">
+        <div class="section-title">VÍA ACTUAL <span id="osmStatus" style="font-size:9px;color:var(--muted)"></span></div>
+        <div class="via-grid" id="viaGrid"></div>
+      </div>
+
+      <!-- Sanción card -->
+      <div id="sancionCard" class="sancion-card" style="margin-top:8px;"></div>
+
+      <!-- Radar de tram -->
+      <div class="segment-card" id="segmentCard">
+        <div id="autoRadarAlert" class="auto-radar-alert" aria-live="polite" style="display:none"></div>
+        <div class="segment-head">
+          <div class="segment-title">📡 RADAR DE TRAM</div>
+          <div class="segment-state" id="segmentState">ATURAT</div>
+        </div>
+        <div class="segment-config">
+          <div class="segment-field"><label>Distància del tram</label><input id="segmentDistance" type="number" min="0.1" max="500" step="0.1" value="5.0"> </div>
+          <div class="segment-field"><label>Límit mitjà</label><input id="segmentLimit" type="number" min="1" max="200" step="1" value="120"></div>
+        </div>
+        <div class="segment-actions">
+          <button type="button" class="segment-btn" id="segmentStartBtn" onclick="startSegmentRadar()">▶ INICIAR TRAM</button>
+          <button type="button" class="segment-btn stop" id="segmentStopBtn" onclick="stopSegmentRadar()" style="display:none">■ FINALITZAR</button>
+        </div>
+        <div class="segment-live" id="segmentLive">
+          <div class="segment-progress-track"><div class="segment-progress-fill" id="segmentProgressFill"></div></div>
+          <div class="segment-progress-meta"><span id="segmentDistanceDone">0,00 km</span><span id="segmentDistanceLeft">5,00 km</span></div>
+          <div class="segment-metrics">
+            <div class="segment-metric"><div class="segment-metric-label">VELOCITAT ACTUAL</div><div class="segment-metric-value" id="segmentCurrentSpeed">0</div></div>
+            <div class="segment-metric"><div class="segment-metric-label">VELOCITAT MITJANA</div><div class="segment-metric-value" id="segmentAverageSpeed">0,0</div></div>
+          </div>
+          <div class="segment-warning" id="segmentWarning"></div>
+        </div>
+      </div>
+
+    </div><!-- /speedScreen -->
+
+    <!-- ── EDITOR SCREEN ── -->
+    <div id="editorScreen" class="screen">
+      <div class="halo-settings" id="interfaceLanguagePanel">
+        <div class="section-title" data-i18n="interfaceLanguageTitle">🌐 IDIOMA DE LA INTERFÍCIE</div>
+        <div class="halo-setting"><div class="halo-setting-head"><strong data-i18n="interfaceLanguageLabel">Idioma de l’aplicació</strong><span id="interfaceLanguageValue">Català</span></div>
+          <select id="interfaceLanguage" aria-label="Idioma de la interfície" style="width:100%;margin-top:5px;padding:8px;border-radius:8px;background:#0b0b12;color:#eafcff;border:1px solid #29293a;font-size:12px"><option value="ca">Català</option><option value="es">Español</option></select>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px" data-i18n="languageHelp">Canvia l’idioma dels menús i textos de l’aplicació. Es desa automàticament.</div>
+      </div>
+      <div class="section-title" data-i18n="editableFines">SANCIONES EDITABLES</div>
+
+      <div id="sancionesEditorList"></div>
+
+      <button class="save-btn" onclick="saveSanciones()">💾 GUARDAR CAMBIOS</button>
+      <button class="reset-btn" onclick="resetSanciones()">↺ Restaurar por defecto</button>
+
+      <div class="halo-settings">
+        <div class="section-title">💡 IL·LUMINACIÓ DEL MARC</div>
+        <div class="halo-preview" id="haloPreview"></div>
+        <div class="halo-setting"><div class="halo-setting-head"><strong>Gruix</strong><span id="haloWidthValue">18 px</span></div><input class="halo-range" id="haloWidthRange" type="range" min="1" max="24" step="1"></div>
+        <div class="halo-setting"><div class="halo-setting-head"><strong>Brillantor</strong><span id="haloIntensityValue">100%</span></div><input class="halo-range" id="haloIntensityRange" type="range" min="5" max="100" step="1"></div>
+        <div class="halo-setting"><div class="halo-setting-head"><strong>Glow</strong><span id="haloGlowValue">38 px</span></div><input class="halo-range" id="haloGlowRange" type="range" min="0" max="60" step="1"></div>
+        <div class="halo-setting"><div class="halo-setting-head"><strong>Degradat cap al centre</strong><span id="haloGradientValue">55%</span></div><input class="halo-range" id="haloGradientRange" type="range" min="2" max="60" step="1"></div>
+        <div class="halo-setting"><div class="halo-setting-head"><strong>Intensitat del feix</strong><span id="haloBeamValue">95%</span></div><input class="halo-range" id="haloBeamRange" type="range" min="5" max="100" step="1"></div>
+        <div class="halo-setting"><div class="halo-setting-head"><strong>Velocitat del moviment</strong><span id="haloSpeedValue">1×</span></div><input class="halo-range" id="haloSpeedRange" type="range" min="0" max="200" step="5"></div>
+        <div class="halo-preset-row"><button class="via-btn" onclick="setHaloPreset('discret')">Discret</button><button class="via-btn" onclick="setHaloPreset('normal')">Normal</button><button class="via-btn" onclick="setHaloPreset('intens')">Intens</button></div>
+        <button class="reset-btn" style="margin-top:7px" onclick="resetHaloSettings()">↺ Restaurar il·luminació</button>
+      </div>
+
+      <div class="halo-settings">
+        <div class="section-title">🎯 CALIBRATGE DE VELOCITAT</div>
+        <div style="font-size:10px;color:var(--muted);line-height:1.4;margin-bottom:9px;">Ajusta la velocitat que mostra SpeedGuard perquè coincideixi amb la velocitat real del vehicle.</div>
+        <div class="halo-setting"><div class="halo-setting-head"><strong>Correcció fixa</strong><span id="speedCorrectionValue">+0 km/h</span></div><input class="halo-range" id="speedCorrectionRange" type="range" min="-20" max="20" step="0.5" value="0"></div>
+        <div class="halo-setting"><div class="halo-setting-head"><strong>Correcció percentual</strong><span id="speedCorrectionPctValue">0%</span></div><input class="halo-range" id="speedCorrectionPctRange" type="range" min="-15" max="15" step="0.5" value="0"></div>
+        <div class="halo-setting" style="margin-top:12px;padding:9px;border-radius:10px;background:#0c0c13;border:1px solid #202033;">
+          <div class="halo-setting-head"><strong>Exemple en temps real</strong><span id="speedCalibrationPreview">GPS 0 → 0 km/h</span></div>
+        </div>
+        <button class="reset-btn" style="margin-top:7px" onclick="resetSpeedCalibration()">↺ Restaurar calibratge</button>
+      </div>
+
+      <div class="halo-settings alert-settings">
+        <div class="section-title">🔔 CONFIGURACIÓ D’ALERTES</div>
+        <div class="halo-setting" style="margin-bottom:9px"><div class="halo-setting-head"><strong>Idioma dels avisos</strong><span id="alertLanguageValue">Català</span></div><select id="alertLanguage" style="width:100%;margin-top:5px;padding:7px;border-radius:8px;background:#0b0b12;color:#eafcff;border:1px solid #29293a;font-size:11px"><option value="ca">Català</option><option value="es">Español</option></select></div>
+        <div class="alert-simple-grid">
+          <label class="alert-toggle"><input type="checkbox" id="alertFixed"><span>📍 Radars fixos</span></label>
+          <label class="alert-toggle"><input type="checkbox" id="alertAverage"><span>📡 Radars de tram</span></label>
+          <label class="alert-toggle"><input type="checkbox" id="alertMobile"><span>🚓 Vigilància mòbil <small>SCT</small></span></label>
+          <label class="alert-toggle"><input type="checkbox" id="alertVoice"><span>🔊 Alerta de veu</span></label>
+          <label class="alert-toggle"><input type="checkbox" id="alertVisual"><span>👁 Alerta visual</span></label>
+        </div>
+        <div class="halo-setting" style="margin-top:10px"><div class="halo-setting-head"><strong>Avís abans del radar</strong><span id="alertDistanceValue">1 km</span></div><input class="halo-range" id="alertDistanceRange" type="range" min="300" max="2000" step="100" value="1000"></div>
+        <div class="alert-source-note">Els radars mòbils exactes no tenen una base pública oficial amb coordenades. L’SCT publica <strong>trams oficials de vigilància mòbil</strong>. SpeedGuard els mostra com a zona de vigilància, no com a radar confirmat.</div>
+        <div class="halo-preset-row"><button class="via-btn" type="button" onclick="testRadarAlert()">🔔 Provar alerta</button><button class="reset-btn" type="button" onclick="resetAlertSettings()">↺ Restaurar</button></div>
+        <button class="reset-btn" type="button" style="width:100%;margin-top:8px;border-color:#00bde8;color:#7feaff" onclick="recoverRadarSystem('manual')">↻ RECUPERAR RADARS</button>
+        <div id="radarRecoveryStatus" role="status" aria-live="polite" style="font-size:10px;color:var(--muted);margin-top:6px">Recuperació automàtica activada</div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <div class="section-title">FUENTE OFICIAL</div>
+        <a class="dgt-link" href="https://www.dgt.es/nuestros-servicios/permisos-de-conducir/tus-puntos/" target="_blank" rel="noopener">
+          🔗 DGT · Tu saldo de puntos
+        </a>
+        <a class="dgt-link" href="https://www.boe.es/buscar/act.php?id=BOE-A-2015-8722" target="_blank" rel="noopener" style="margin-top:6px;color:#aaffcc;">
+          📜 RDL 6/2015 · Texto consolidado (BOE)
+        </a>
+        <a class="dgt-link" href="https://www.dgt.es/comunicacion/noticias/2021/nueva-ley-trafico/" target="_blank" rel="noopener" style="margin-top:6px;color:#aaffcc;">
+          📋 Ley 18/2021 · Reforma de tráfico
+        </a>
+        <a class="dgt-link" href="https://sede.dgt.gob.es/es/multas-y-sanciones/" target="_blank" rel="noopener" style="margin-top:6px;">
+          💳 Consultar / Pagar multa DGT
+        </a>
+      </div>
+
+      <div style="margin-top:12px;">
+        <div class="section-title">DESCUENTOS POR PRONTO PAGO</div>
+        <div class="info-block">
+          <p>Las multas de tráfico tienen un <strong style="color:var(--ok)">descuento del 50%</strong> si se pagan en los primeros <strong>20 días naturales</strong>, siempre que no impliquen pérdida de puntos.<br><br>
+          Las infracciones que conllevan pérdida de puntos <strong style="color:var(--red)">no tienen descuento</strong> por pronto pago.</p>
+        </div>
+      </div>
+    </div><!-- /editorScreen -->
+
+    <!-- ── TRIPS SCREEN (replaces unused INFO tab) ── -->
+    <div id="infoScreen" class="screen">
+      <div class="info-block">
+        <h3>🧾 VIATGES I HISTORIAL</h3>
+        <p>Consulta els trajectes desats en aquest dispositiu. En mode conducció, aquesta pestanya es converteix en el botó per finalitzar el trajecte i mostrar-ne el resum.</p>
+      </div>
+      <div id="tripArchiveList" class="info-block" aria-live="polite"><p>Carregant historial…</p></div>
+      <button type="button" class="trip-close" onclick="openLatestTrip()">OBRIR L'ÚLTIM RESUM</button>
+      <button type="button" class="trip-close" onclick="renderTripArchive()">ACTUALITZAR HISTORIAL</button>
+      <div class="info-block"><h3>ℹ️ SOBRE LES DADES</h3><p>Els trajectes es desen localment en aquest navegador. Si esborres les dades del lloc web, es poden perdre. Les dades de radars i GPS són orientatives i poden ser incompletes.</p></div>
+    </div><!-- /infoScreen -->
+
+    <!-- ── TRIP ANALYSIS ── -->
+    <div id="analysisScreen" class="screen">
+      <div class="info-block"><h3>📊 ANÀLISI DEL TRAJECTE</h3><p>Els trajectes es registren automàticament mentre el mode de conducció està actiu. Selecciona un viatge per veure el recorregut, la velocitat i les deteccions guardades.</p>
+      <label style="display:block;margin:8px 0">Enregistrament automàtic <input id="autoRecordToggle" type="checkbox" checked onchange="setAutoRecord(this.checked)" style="transform:scale(1.2);margin-left:8px"></label>
+      <div id="analysisTripPicker"></div></div>
+      <div id="tripAnalysisContent" class="info-block"><p>Selecciona un trajecte de l'historial.</p></div>
+      <div class="info-block"><p><strong>Nota:</strong> el recorregut només inclou les mostres GPS enregistrades. Els límits de velocitat es mostren només quan hi ha una dada disponible; la velocitat GPS és orientativa i no és una mesura oficial de radar.</p></div>
+    </div><!-- /analysisScreen -->
+
+  </div><!-- /mainContent -->
+
+  <!-- GPS Status bar -->
+  <div class="gps-bar" id="gpsBar">
+    <span><span class="gps-dot waiting" id="gpsDot"></span><span id="gpsText">Esperando GPS…</span></span>
+    <span id="gpsCoords" style="color:var(--muted)"></span>
+  </div>
+
+  <div class="health-indicators" aria-label="Estat del sistema">
+    <span class="health-chip warn" id="healthGps">GPS: esperant</span>
+    <span class="health-chip warn" id="healthInternet">Internet: comprovant</span>
+    <span class="health-chip warn" id="healthMap">Cartografia: pendent</span>
+  </div>
+
+  <!-- Nav tabs -->
+  <div class="nav-tabs">
+    <button class="nav-tab active" id="tab-speed"  onclick="showScreen('speed')">🚗 RADAR</button>
+    <button class="nav-tab"        id="tab-editor" onclick="showScreen('editor')">⚙ EDITAR</button>
+    <button class="nav-tab" id="tab-info" onclick="handleTripTab()">🧾 VIATGES</button>
+    <button class="nav-tab" id="tab-analysis" onclick="showTripAnalysis()">📊 ANÀLISI</button>
+  </div>
+
+  <div class="resize-hint"></div>
+</div><!-- /floatWindow -->
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+// INTERFACE LANGUAGE (Català / Español), persisted locally
+// ══════════════════════════════════════════════════════════════════
+const SG_I18N = {
+  ca: {
+    interfaceLanguageTitle:'🌐 IDIOMA DE LA INTERFÍCIE', interfaceLanguageLabel:'Idioma de l’aplicació', languageHelp:'Canvia l’idioma dels menús i textos de l’aplicació. Es desa automàticament.', editableFines:'SANCIONS EDITABLES',
+    'Minimizar':'Minimitzar','Siempre visible':'Sempre visible','RUMB':'RUMB','Radar fix':'Radar fix','Radar de tram':'Radar de tram','Possible mòbil':'Possible mòbil','RECORRIDO DE CONTROL':'RECORREGUT DE CONTROL','INICIO':'INICI','CONTROL':'CONTROL','FIN':'FINAL','ACTUAL':'ACTUAL','MITJANA':'MITJANA','VIA NO DETECTADA':'VIA NO DETECTADA','Esperant GPS…':'Esperant GPS…','CONFIANÇA VIA: ESPERANT':'FIABILITAT DE LA VIA: ESPERANT',
+    'RESUM DEL VIATGE':'RESUM DEL VIATGE','Radars detectats durant el viatge':'Radars detectats durant el trajecte','CONSULTAR VIATGES ANTERIORS':'CONSULTAR VIATGES ANTERIORS','TANCAR':'TANCAR','🚗 ACTIVAR MODO CONDUCCIÓN':'🚗 ACTIVAR MODE CONDUCCIÓ','ESTADO':'ESTAT','Manual':'Manual','Velocidad manual':'Velocitat manual','📷 Actualitzar radars':'📷 Actualitzar radars','🗺 Actualitzar base de dades':'🗺 Actualitzar base de dades','📡 Forçar connexió GPS':'📡 Forçar connexió GPS','Actualitzacions manuals disponibles':'Actualitzacions manuals disponibles','VÍA ACTUAL':'VIA ACTUAL','VELOCITAT ACTUAL':'VELOCITAT ACTUAL','VELOCITAT MITJANA':'VELOCITAT MITJANA',
+    'SANCIONES EDITABLES':'SANCIONS EDITABLES','💾 GUARDAR CAMBIOS':'💾 DESAR CANVIS','↺ Restaurar por defecto':'↺ Restaurar valors per defecte','💡 IL·LUMINACIÓ DEL MARC':'💡 IL·LUMINACIÓ DEL MARC','Gruix':'Gruix','Brillantor':'Brillantor','Degradat cap al centre':'Degradat cap al centre','Intensitat del feix':'Intensitat del feix','Velocitat del moviment':'Velocitat del moviment','Discret':'Discret','Normal':'Normal','Intens':'Intens','↺ Restaurar il·luminació':'↺ Restaurar il·luminació','🎯 CALIBRATGE DE VELOCITAT':'🎯 CALIBRATGE DE VELOCITAT','Ajusta la velocitat que mostra SpeedGuard perquè coincideixi amb la velocitat real del vehicle.':'Ajusta la velocitat que mostra SpeedGuard perquè coincideixi amb la velocitat real del vehicle.','Corrección fija':'Correcció fixa','Corrección porcentual':'Correcció percentual','Ejemplo en tiempo real':'Exemple en temps real','↺ Restaurar calibratge':'↺ Restaurar calibratge','🔔 CONFIGURACIÓN DE ALERTAS':'🔔 CONFIGURACIÓ D’ALERTES','Idioma dels avisos':'Idioma dels avisos','Radars fixos':'Radars fixos','Radars de tram':'Radars de tram','Vigilància mòbil':'Vigilància mòbil','Alerta de veu':'Alerta de veu','Alerta visual':'Alerta visual','Avís abans del radar':'Avís abans del radar','🔔 Provar alerta':'🔔 Provar alerta','↺ Restaurar':'↺ Restaurar','↻ RECUPERAR RADARS':'↻ RECUPERAR RADARS','FUENTE OFICIAL':'FONTS OFICIALS','DESCUENTOS POR PRONTO PAGO':'DESCOMPTES PER PAGAMENT ANTICIPAT',
+    '🧾 VIATGES I HISTORIAL':'🧾 VIATGES I HISTORIAL','Consulta els trajectes desats en aquest dispositiu. En mode conducció, aquesta pestanya es converteix en el botó per finalitzar el trajecte i mostrar-ne el resum.':'Consulta els trajectes desats en aquest dispositiu. En mode conducció, aquesta pestanya es converteix en el botó per finalitzar el trajecte i mostrar-ne el resum.','OBRIR L’ÚLTIM RESUM':'OBRIR L’ÚLTIM RESUM','ACTUALITZAR HISTORIAL':'ACTUALITZAR HISTORIAL','ℹ️ SOBRE LES DADES':'ℹ️ SOBRE LES DADES','🚗 RADAR':'🚗 RADAR','⚙ EDITAR':'⚙ EDITAR','🧾 VIATGE':'🧾 VIATGES','⏹ FINALITZAR':'⏹ FINALITZAR','🧾 VIATGES':'🧾 VIATGES'
+  },
+  es: {
+    interfaceLanguageTitle:'🌐 IDIOMA DE LA INTERFAZ', interfaceLanguageLabel:'Idioma de la aplicación', languageHelp:'Cambia el idioma de los menús y textos de la aplicación. Se guarda automáticamente.', editableFines:'SANCIONES EDITABLES',
+    'Minimitzar':'Minimizar','Sempre visible':'Siempre visible','RUMB':'RUMBO','Radar fix':'Radar fijo','Radar de tram':'Radar de tramo','Possible mòbil':'Posible móvil','RECORREGUT DE CONTROL':'RECORRIDO DE CONTROL','INICI':'INICIO','FINAL':'FIN','FIABILITAT DE LA VIA: ESPERANT':'FIABILIDAD DE LA VÍA: ESPERANDO',
+    'RESUM DEL VIATGE':'RESUMEN DEL VIAJE','Radars detectats durant el trajecte':'Radares detectados durante el viaje','CONSULTAR VIATGES ANTERIORS':'CONSULTAR VIAJES ANTERIORES','TANCAR':'CERRAR','🚗 ACTIVAR MODE CONDUCCIÓ':'🚗 ACTIVAR MODO CONDUCCIÓN','ESTAT':'ESTADO','Velocitat manual':'Velocidad manual','📷 Actualitzar radars':'📷 Actualizar radares','🗺 Actualitzar base de dades':'🗺 Actualizar base de datos','📡 Forçar connexió GPS':'📡 Forzar conexión GPS','VIA ACTUAL':'VÍA ACTUAL','FIABILITAT DE LA VIA':'FIABILIDAD DE LA VÍA',
+    'SANCIONS EDITABLES':'SANCIONES EDITABLES','💾 DESAR CANVIS':'💾 GUARDAR CAMBIOS','↺ Restaurar valors per defecte':'↺ Restaurar por defecto','💡 IL·LUMINACIÓ DEL MARC':'💡 ILUMINACIÓN DEL MARCO','Gruix':'Grosor','Brillantor':'Brillo','Degradat cap al centre':'Degradado hacia el centro','Intensitat del feix':'Intensidad del haz','Velocitat del moviment':'Velocidad del movimiento','Discret':'Discreto','Intens':'Intenso','↺ Restaurar il·luminació':'↺ Restaurar iluminación','🎯 CALIBRATGE DE VELOCITAT':'🎯 CALIBRACIÓN DE VELOCIDAD','Ajusta la velocitat que mostra SpeedGuard perquè coincideixi amb la velocitat real del vehicle.':'Ajusta la velocidad que muestra SpeedGuard para que coincida con la velocidad real del vehículo.','Correcció fixa':'Corrección fija','Correcció percentual':'Corrección porcentual','Exemple en temps real':'Ejemplo en tiempo real','↺ Restaurar calibratge':'↺ Restaurar calibración','🔔 CONFIGURACIÓ D’ALERTES':'🔔 CONFIGURACIÓN DE ALERTAS','Idioma dels avisos':'Idioma de los avisos','Radars fixos':'Radares fijos','Radars de tram':'Radares de tramo','Vigilància mòbil':'Vigilancia móvil','Alerta de veu':'Alerta de voz','Alerta visual':'Alerta visual','Avís abans del radar':'Aviso antes del radar','🔔 Provar alerta':'🔔 Probar alerta','↺ Restaurar':'↺ Restaurar','↻ RECUPERAR RADARS':'↻ RECUPERAR RADARES','FUENTE OFICIAL':'FUENTE OFICIAL','DESCOMPTES PER PAGAMENT ANTICIPAT':'DESCUENTOS POR PRONTO PAGO',
+    '🧾 VIATGES I HISTORIAL':'🧾 VIAJES E HISTORIAL','Consulta els trajectes desats en aquest dispositiu. En mode conducció, aquesta pestanya es converteix en el botó per finalitzar el trajecte i mostrar-ne el resum.':'Consulta los viajes guardados en este dispositivo. En modo conducción, esta pestaña se convierte en el botón para finalizar el viaje y mostrar su resumen.','OBRIR L’ÚLTIM RESUM':'ABRIR EL ÚLTIMO RESUMEN','ACTUALITZAR HISTORIAL':'ACTUALIZAR HISTORIAL','ℹ️ SOBRE LES DADES':'ℹ️ SOBRE LOS DATOS','🚗 RADAR':'🚗 RADAR','⚙ EDITAR':'⚙ AJUSTES','🧾 VIATGE':'🧾 VIAJES','🧾 VIATGES':'🧾 VIAJES','⏹ FINALITZAR':'⏹ FINALIZAR'
+  }
+};
+let interfaceLanguage = localStorage.getItem('sg_interface_language') || 'ca';
+let sgApplyingTranslations = false;
+const sgTranslationPairs = (() => {
+  const pairs = new Map();
+  for (const [lang, dict] of Object.entries(SG_I18N)) {
+    for (const [source, translated] of Object.entries(dict)) {
+      if (typeof translated !== 'string') continue;
+      // Every known CA/ES variant resolves to the same canonical source key.
+      if (!pairs.has(source)) pairs.set(source, source);
+      pairs.set(translated, pairs.get(source) || source);
+    }
+  }
+  return pairs;
+})();
+function sgCanonicalText(text) {
+  const clean = String(text || '').trim();
+  return sgTranslationPairs.get(clean) || clean;
+}
+function sgLookupTranslation(source, dict) {
+  if (Object.prototype.hasOwnProperty.call(dict, source)) return dict[source];
+  // Also support dictionaries whose entry was authored in the opposite direction.
+  for (const [key, value] of Object.entries(dict)) {
+    if (value === source) return key;
+  }
+  return source;
+}
+function sgTranslateLeaf(el, dict) {
+  const current = el.textContent;
+  const trimmed = current.trim();
+  if (!trimmed) return;
+  // Remember the source only when the text is not the translation we applied last time.
+  const lastApplied = el.dataset.sgI18nApplied;
+  if (!el.dataset.sgI18nSource || (trimmed !== lastApplied && lastApplied !== undefined)) {
+    el.dataset.sgI18nSource = sgCanonicalText(trimmed);
+  } else if (!lastApplied && !el.dataset.sgI18nSource) {
+    el.dataset.sgI18nSource = sgCanonicalText(trimmed);
+  }
+  const source = el.dataset.sgI18nSource;
+  const translated = sgLookupTranslation(source, dict) || source;
+  if (current !== translated) {
+    el.textContent = translated;
+  }
+  el.dataset.sgI18nApplied = translated;
+}
+function translateInterface(root=document) {
+  const dict = SG_I18N[interfaceLanguage] || SG_I18N.ca;
+  sgApplyingTranslations = true;
+  try {
+    const all = [];
+    if (root.nodeType === 1 && root.matches && root.matches('*')) all.push(root);
+    if (root.querySelectorAll) all.push(...root.querySelectorAll('*'));
+    all.forEach(el => {
+      // Translate leaf text only; never overwrite inputs or elements with child structure.
+      if (el.children.length === 0 && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && el.tagName !== 'OPTION') {
+        sgTranslateLeaf(el, dict);
+      }
+      ['title','aria-label','placeholder'].forEach(attr => {
+        if (!el.hasAttribute(attr)) return;
+        const sourceKey = 'sgSource' + attr;
+        const appliedKey = 'sgApplied' + attr;
+        const current = el.getAttribute(attr);
+        if (!el.dataset[sourceKey] || (el.dataset[appliedKey] && current !== el.dataset[appliedKey])) {
+          el.dataset[sourceKey] = sgCanonicalText(current);
+        }
+        const translated = sgLookupTranslation(el.dataset[sourceKey], dict) || el.dataset[sourceKey];
+        if (current !== translated) el.setAttribute(attr, translated);
+        el.dataset[appliedKey] = translated;
+      });
+    });
+    // Stable keyed translations for elements with nested markup.
+    root.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.dataset.i18n;
+      if (dict[key]) el.textContent = dict[key];
+    });
+    const value = document.getElementById('interfaceLanguageValue');
+    if (value) value.textContent = interfaceLanguage === 'es' ? 'Español' : 'Català';
+    document.documentElement.lang = interfaceLanguage;
+  } finally {
+    sgApplyingTranslations = false;
+  }
+}
+function setInterfaceLanguage(lang) {
+  interfaceLanguage = lang === 'es' ? 'es' : 'ca';
+  localStorage.setItem('sg_interface_language', interfaceLanguage);
+  const selector = document.getElementById('interfaceLanguage');
+  if (selector && selector.value !== interfaceLanguage) selector.value = interfaceLanguage;
+  translateInterface();
+  // Some screens rebuild their labels on the next frame; translate those too.
+  requestAnimationFrame(() => translateInterface());
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const selector = document.getElementById('interfaceLanguage');
+  if (selector) {
+    selector.value = interfaceLanguage;
+    selector.addEventListener('change', () => setInterfaceLanguage(selector.value));
+  }
+  translateInterface();
+});
+// Re-translate text inserted or rewritten by the app (status, radar messages, summaries).
+let sgTranslateQueued = false;
+function queueDynamicTranslation() {
+  if (sgApplyingTranslations || sgTranslateQueued) return;
+  sgTranslateQueued = true;
+  queueMicrotask(() => {
+    sgTranslateQueued = false;
+    if (!sgApplyingTranslations) translateInterface();
+  });
+}
+const sgTranslationObserver = new MutationObserver(mutations => {
+  if (sgApplyingTranslations) return;
+  if (mutations.some(m => m.type === 'characterData' || m.type === 'childList' || m.type === 'attributes')) queueDynamicTranslation();
+});
+sgTranslationObserver.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+// ══════════════════════════════════════════════════════════════════
+//  DEFAULT SANCIONES (legislación española RDL 6/2015 + Ley 18/2021)
+// ══════════════════════════════════════════════════════════════════
+const DEFAULT_SANCIONES = [
+  { id:'ok',        label:'SIN INFRACCIÓN',   desc:'Circulando dentro del límite', color:'#00ff88', minExceso:-999, maxExceso:0,   multa:0,    descuento:false, puntos:0, carcel:false, nota:'' },
+  { id:'leve',      label:'LEVE',             desc:'Exceso hasta 20 km/h',        color:'#ffe500', minExceso:1,   maxExceso:20,  multa:100,  descuento:true,  puntos:0, carcel:false, nota:'Descuento 50% primeros 20 días naturales.' },
+  { id:'grave',     label:'GRAVE',            desc:'Exceso 21–30 km/h',           color:'#ff9500', minExceso:21,  maxExceso:30,  multa:400,  descuento:false, puntos:2, carcel:false, nota:'Pérdida de 2 puntos del carnet.' },
+  { id:'muy_grave', label:'MUY GRAVE',        desc:'Exceso 31–50 km/h',           color:'#ff3b30', minExceso:31,  maxExceso:50,  multa:500,  descuento:false, puntos:4, carcel:false, nota:'Pérdida de 4 puntos. Multa mínima 500€.' },
+  { id:'grave_ext', label:'MUY GRAVE +50',    desc:'Exceso 51–70 km/h',           color:'#cc0033', minExceso:51,  maxExceso:70,  multa:1000, descuento:false, puntos:6, carcel:false, nota:'Pérdida de 6 puntos. Puede implicar suspensión provisional.' },
+  { id:'penal',     label:'DELITO PENAL',     desc:'Exceso +70 km/h',             color:'#bf5fff', minExceso:71,  maxExceso:999, multa:1200, descuento:false, puntos:6, carcel:true,  nota:'Art. 379 CP: hasta 6 meses prisión / 31–90 días multa. Suspensión carnet 1–4 años.' },
+];
+
+const TIPOS_VIA = [
+  { id:'via30',      label:'Zona 30',     icon:'🔵', limite:30 },
+  { id:'urbana',     label:'Urbana',      icon:'🏙', limite:50 },
+  { id:'convenc',    label:'Carretera',   icon:'🛣', limite:90 },
+  { id:'autovia',    label:'Autovía',     icon:'🛤', limite:120 },
+  { id:'escolar',    label:'Escolar',     icon:'🏫', limite:20 },
+];
+
+// ══════════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════════
+let sanciones    = loadSanciones();
+let currentVia   = TIPOS_VIA[1];     // default urbana
+let currentSpeed = 0;
+let rawGpsSpeed = 0;
+let inputMode    = 'gps';            // 'gps' | 'manual'
+let gpsWatchId   = null;
+let lastLat      = null, lastLon = null;
+let currentHeading = null;
+let lastGpsHeadingAt = 0;
+let lastGpsAccuracy = Infinity;
+let deviceCompassHeading = null;
+let orientationListening = false;
+let lastGpsTimestamp = 0;
+let osmQuerying  = false;
+
+// Radar de tram state
+let segmentRadar = { active:false, totalKm:5, limitKmh:120, distanceKm:0, startTime:0, lastLat:null, lastLon:null, completed:false };
+let radarDetection = { fixed:[], average:[], alerted:new Set(), lastQueryLat:null, lastQueryLon:null, lastAlertAt:0, lastAlertByKey:{}, activeAverageId:null };
+let roadDetection = {ref:'',name:'',limit:null,highway:'',distanceM:null,bearing:null,headingDiff:null,source:'OSM',updatedAt:0,confidence:'bad'};
+let tripRadarLog=[]; let tripStartedAt=Date.now(); let loggedRadarIds=new Set(); let tripDistanceKm=0; let lastTripLat=null; let lastTripLon=null; let lastRoadQueryAt=0; let completedAverageRadars=new Map();
+let tripDiagnosticLog=[]; const TRIP_DIAGNOSTICS_KEY='sg_trip_diagnostics_v1';
+let tripTrackSamples=[]; const TRIP_TRACK_KEY='sg_trip_track_v1'; const AUTO_RECORD_KEY='sg_auto_record_enabled'; let selectedAnalysisTripId=null;
+function autoRecordEnabled(){return localStorage.getItem(AUTO_RECORD_KEY)!=='0'}
+function setAutoRecord(v){localStorage.setItem(AUTO_RECORD_KEY,v?'1':'0');const e=document.getElementById('autoRecordToggle');if(e)e.checked=!!v;const m=document.getElementById('analysisTripPicker');if(m)m.dataset.recording=v?'on':'off';}
+function recordTrackSample(){if(!drivingMode||!autoRecordEnabled()||lastLat===null||lastLon===null)return;const now=Date.now();const prev=tripTrackSamples[tripTrackSamples.length-1];if(prev&&now-prev.t<1500)return;const sample={t:now,lat:lastLat,lon:lastLon,speed:Math.max(0,Number(currentSpeed)||0),accuracy:Number.isFinite(lastGpsAccuracy)?lastGpsAccuracy:null,limit:(typeof currentSpeedLimit!=='undefined'&&Number.isFinite(Number(currentSpeedLimit)))?Number(currentSpeedLimit):((typeof currentLimit!=='undefined'&&Number.isFinite(Number(currentLimit)))?Number(currentLimit):null),road:(document.getElementById('roadDiagnosticName')?.textContent||'').trim()};if(prev){const d=haversineKm(prev.lat,prev.lon,sample.lat,sample.lon);if(d<0.003&&now-prev.t<5000)return;}tripTrackSamples.push(sample);if(tripTrackSamples.length>6000)tripTrackSamples=tripTrackSamples.filter((_,i)=>i%2===0);try{localStorage.setItem(TRIP_TRACK_KEY,JSON.stringify(tripTrackSamples));}catch(e){if(tripTrackSamples.length>1000){tripTrackSamples=tripTrackSamples.filter((_,i)=>i%2===0);try{localStorage.setItem(TRIP_TRACK_KEY,JSON.stringify(tripTrackSamples));}catch{}}}}
+function logTripDiagnostic(type,message,extra={}){const item={time:Date.now(),type:String(type),message:String(message),...extra};tripDiagnosticLog.push(item);if(tripDiagnosticLog.length>300)tripDiagnosticLog=tripDiagnosticLog.slice(-300);try{localStorage.setItem(TRIP_DIAGNOSTICS_KEY,JSON.stringify(tripDiagnosticLog));}catch(e){console.warn('No s’ha pogut desar el diagnòstic',e);}}
+let radarQuerying = false;
+let lastRadarQueryAt = 0;
+let lastRadarProximityCheckAt = Date.now();
+let lastRadarRecoveryAt = 0;
+let radarRecoveryBusy = false;
+
+// Alert configuration — simple, persistent and testable
+const DEFAULT_ALERT_SETTINGS = { fixed:true, average:true, mobileZones:true, voice:true, visual:true, distanceM:1000, language:'ca' };
+let currentRoadRef = '';
+let lastConfirmedRoadAt = 0;
+let lastConfirmedRoadLat = null;
+let lastConfirmedRoadLon = null;
+let currentRoadName = '';
+let lastMobileAlertAt = 0;
+let activeMobileZoneKey = null;
+let lastMobileZoneKey = null;
+let lastMobileZoneCheckAt = 0;
+
+// Trams oficials de vigilància mòbil publicats per l'SCT (via + PK).
+// No representen la presència d'un radar en temps real.
+const SCT_MOBILE_ZONES = [
+ ['A-2',445,529],['A-2',530,573],['A-2',573.1,614.3],['A-2',701,711],['A-22',0,8],['A-26',62,85],['A-27',0,6.5],['A-7',1122,1171],
+ ['AP-2',11,15],['AP-2',121,178],['AP-7',0,100],['AP-7',100,141],['AP-7',159.5,207.4],['AP-7',221.5,290],['AP-7',290,345],
+ ['B-10',18,20],['B-124',3,6],['B-140',2,5],['B-1413',2,5],['B-142',0,9],['B-20',16.9,26.8],['B-22',0.5,7],
+ ['B-224',0,17],['B-224',15,25.5],['B-225',0,3.5],['B-23',0,11],['B-24',3.5,9.9],['B-30',1,11.5],['B-522',1,6.8],
+ ['BP-1101',1,17],['BP-1503',18,24],['BP-5002',5.1,5.7],['BV-1248',3,7],['BV-1462',5,10],['BV-5001',6,23],['BV-5105',0,5],['BV-5159',0,5.6],
+ ['C-12',0,94],['C-12',104,160],['C-12b',0,10],['C-13',0,45],['C-13',80,90],['C-13',127.7,163],['C-14',0,55],['C-14',58,130],['C-14',130,177],
+ ['C-1412b',30,61],['C-15',0,31.8],['C-15',32,43.5],['C-153',3.8,35.1],['C-16',2,34],['C-16',36,123],['C-16c',0,4.4],['C-162',0,11],
+ ['C-17',1.5,40],['C-17',40,85],['C-221',54,75],['C-245',0,18],['C-25',82,97],['C-25',96,204],['C-25',203,244],['C-26',0,26],['C-26',31,51],['C-26',88,171],
+ ['C-260',29,43],['C-28',24,34],['C-31',146.2,199.5],['C-31',208.6,218.5],['C-31',311,379],['C-31b',3,9.2],['C-32',0,12],['C-32',84.6,134],['C-32/B-20',12.7,62],
+ ['C-33',77,90],['C-35',30,64],['C-35',65,100],['C-37',18,25],['C-37',62,95],['C-42',3,5.8],['C-43',0,13],['C-44',0,26.5],['C-51',6,34],
+ ['C-53',118,142],['C-55',0,11.2],['C-55',12,79],['C-58',0,36],['C-59',0,34],['C-60',1,9.7],['C-63',1,67],['C-65',0,29],['C-66',1,56],
+ ['GI-555',0,13],['GI-623',0,18],['GI-682',3,45],['L-310',0,19],['L-500',0,20],['L-511',0,41],['LL-11',0,7],['N-141',0,9],['N-141c',0,33],
+ ['N-145',0,9],['N-230',4,29],['N-230',122,187.5],['N-240',1.7,47],['N-240',49,117],['N-260',15,94],['N-260',179.7,233.6],['N-260',279.8,308.8],
+ ['N-260 / N-152',170.2,0.5],['N-340',1059,1120],['N-340',1203.5,1243.5],['N-420',781.7,831.3],['N-420',831.3,876.9],['N-2',448,525],['N-2',631.9,686.4],['N-2',686,779],['N-2a',443,530],
+ ['T-11',0,18],['T-310',3.7,20],['T-330',10,27.1],['T-331',4.5,18],['T-340',1,3],['T-342',1,3],['T-741',1,7.2],['TV-3022',0,19],['TV-3141',0,8],['TV-3148',2.3,3],['TV-3319',5.1,9.5],['TV-3408',0,10],['TV-3454',0,13]
+];
+function normRef(v){ return String(v||'').toUpperCase().replace(/\s+/g,'').replace(/–/g,'-'); }
+function getSctMobileZone(){
+  const ref=normRef(currentRoadRef);
+  if(!ref) return null;
+  const candidates=SCT_MOBILE_ZONES.filter(z=>{ const zr=normRef(z[0]); return zr===ref || (zr.includes('/') && zr.split('/').map(normRef).includes(ref)); });
+  return candidates.length ? {ref:currentRoadRef,segments:candidates} : null;
+}
+function mobileZoneText(){ return alertLang()==='es' ? '⚠ ZONA DE VIGILANCIA MÓVIL SCT' : '⚠ ZONA DE VIGILÀNCIA MÒBIL SCT'; }
+function mobileZoneVoice(){ return T().mobileVoice; }
+function updateMobileZoneHUD(){
+  const zone=getSctMobileZone(), el=document.getElementById('drhMobileZone');
+  const key=zone ? normRef(zone.ref) : null;
+  if(!alertSettings.mobileZones || !zone){
+    activeMobileZoneKey=null;
+    if(el) el.style.display='none';
+    const route=document.getElementById('drhRoute');
+    if(route && !segmentRadar.active) route.classList.remove('visible');
+    const hud=document.getElementById('drivingRadarHUD');
+    if(hud && !segmentRadar.active) hud.classList.remove('danger');
+    return null;
+  }
+  activeMobileZoneKey=key;
+  if(!el) return zone;
+  el.style.display='block'; el.style.left='8%'; el.style.width='84%';
+  const route=document.getElementById('drhRoute'); if(route) route.classList.add('visible');
+  const title=document.getElementById('drhRouteTitle'); if(title) title.textContent=alertLang()==='es'?'ZONA DE POSSIBLE RADAR MÓVIL':'ZONA DE POSSIBLE RADAR MÒBIL';
+  const start=document.getElementById('drhRouteStart'); if(start) start.textContent='SCT';
+  const mid=document.getElementById('drhRouteMiddle'); if(mid) mid.textContent=zone.ref;
+  const end=document.getElementById('drhRouteEnd'); if(end) end.textContent='SCT';
+  const status=document.getElementById('drhRouteStatus');
+  if(status) status.textContent=alertLang()==='es' ? 'VIGILANCIA SCT' : 'VIGILÀNCIA SCT';
+  return zone;
+}
+let alertSettings = (() => { try { return {...DEFAULT_ALERT_SETTINGS, ...(JSON.parse(localStorage.getItem('sg_alert_settings') || '{}'))}; } catch { return {...DEFAULT_ALERT_SETTINGS}; } })();
+function saveAlertSettings(){ localStorage.setItem('sg_alert_settings', JSON.stringify(alertSettings)); }
+function alertLang(){ return alertSettings.language==='es' ? 'es' : 'ca'; }
+const ALERT_TEXT = {
+  ca:{mobile:()=> '⚠ ZONA DE POSSIBLE RADAR MÒBIL. Redueix la velocitat i para atenció.',mobileVoice:'Atenció. Estàs entrant en una zona de possible control de velocitat mòbil. Modera la velocitat i para atenció.',test:'🔔 PROVA D’ALERTA · RADAR A 500 m · LÍMIT 120 km/h',testVoice:'Prova d’alerta. Radar a cinc-cents metres. Límit cent vint quilòmetres per hora.',fixed:(d,l)=>`⚠ RADAR FIX A ${d} m · límit ${l} km/h`,fixedVoice:(d,l)=>`Atenció. Radar fix a ${d} metres. Límit ${l} quilòmetres per hora.`,avg:(d,l)=>`⚠ RADAR DE TRAM A ${d} m · ${l} km/h`,avgVoice:(d,l)=>`Atenció. Radar de tram a ${d} metres. Límit ${l} quilòmetres per hora.`,start:(l,k)=>`📡 RADAR DE TRAM · ${l} km/h · ${k} km`,startVoice:(l)=>`Radar de tram detectat. Límit ${l} quilòmetres per hora. Iniciant control de mitjana.`,complete:'✓ RADAR DE TRAM COMPLETAT · velocitat mitjana calculada',completeVoice:'Radar de tram completat.',scanning:(n)=>`📡 RADARS: ${n} DETECTATS · ESCANEJANT`},
+  es:{mobile:()=> '⚠ ZONA DE POSIBLE RADAR MÓVIL. Modera la velocidad y presta atención.',mobileVoice:'Atención. Estás entrando en una zona de posible control de velocidad móvil. Modera la velocidad y presta atención.',test:'🔔 PRUEBA DE ALERTA · RADAR A 500 m · LÍMITE 120 km/h',testVoice:'Prueba de alerta. Radar a quinientos metros. Límite ciento veinte kilómetros por hora.',fixed:(d,l)=>`⚠ RADAR FIJO A ${d} m · límite ${l} km/h`,fixedVoice:(d,l)=>`Atención. Radar fijo a ${d} metros. Límite ${l} kilómetros por hora.`,avg:(d,l)=>`⚠ RADAR DE TRAMO A ${d} m · ${l} km/h`,avgVoice:(d,l)=>`Atención. Radar de tramo a ${d} metros. Límite ${l} kilómetros por hora.`,start:(l,k)=>`📡 RADAR DE TRAMO · ${l} km/h · ${k} km`,startVoice:(l)=>`Radar de tramo detectado. Límite ${l} kilómetros por hora. Iniciando control de velocidad media.`,complete:'✓ RADAR DE TRAMO COMPLETADO · velocidad media calculada',completeVoice:'Radar de tramo completado.',scanning:(n)=>`📡 RADARES: ${n} DETECTADOS · ESCANEANDO`}
+};
+function T(){return ALERT_TEXT[alertLang()]}
+function updateAlertSettingsUI(){
+  const ids={alertFixed:'fixed',alertAverage:'average',alertMobile:'mobileZones',alertVoice:'voice',alertVisual:'visual'};
+  Object.entries(ids).forEach(([id,key])=>{const el=document.getElementById(id); if(el) el.checked=!!alertSettings[key];});
+  const lang=document.getElementById('alertLanguage'); if(lang) lang.value=alertSettings.language||'ca'; const langVal=document.getElementById('alertLanguageValue'); if(langVal) langVal.textContent=alertSettings.language==='es'?'Español':'Català';
+  const range=document.getElementById('alertDistanceRange'), val=document.getElementById('alertDistanceValue');
+  if(range) range.value=alertSettings.distanceM;
+  if(val) val.textContent=alertSettings.distanceM>=1000?(alertSettings.distanceM/1000).toFixed(1).replace('.0','')+' km':alertSettings.distanceM+' m';
+}
+function bindAlertSettings(){
+  const ids={alertFixed:'fixed',alertAverage:'average',alertMobile:'mobileZones',alertVoice:'voice',alertVisual:'visual'};
+  Object.entries(ids).forEach(([id,key])=>{const el=document.getElementById(id); if(el) el.addEventListener('change',()=>{alertSettings[key]=el.checked;saveAlertSettings();updateAlertSettingsUI();});});
+  const lang=document.getElementById('alertLanguage'); if(lang) lang.addEventListener('change',()=>{alertSettings.language=lang.value;saveAlertSettings();updateAlertSettingsUI();});
+  const range=document.getElementById('alertDistanceRange');
+  if(range) range.addEventListener('input',()=>{alertSettings.distanceM=Number(range.value);saveAlertSettings();updateAlertSettingsUI();});
+  updateAlertSettingsUI();
+}
+function resetAlertSettings(){alertSettings={...DEFAULT_ALERT_SETTINGS};saveAlertSettings();updateAlertSettingsUI();}
+function testRadarAlert(){
+  const oldVoice=alertSettings.voice;
+  alertSettings.voice=true;
+  showRadarAlert(T().test,'fixed');
+  speakRadar(T().testVoice);
+  setTimeout(()=>{alertSettings.voice=oldVoice;},50);
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+//  PERSISTENCE
+// ══════════════════════════════════════════════════════════════════
+function loadSanciones() {
+  try {
+    const saved = localStorage.getItem('sg_sanciones');
+    return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(DEFAULT_SANCIONES));
+  } catch { return JSON.parse(JSON.stringify(DEFAULT_SANCIONES)); }
+}
+function saveSancionesStorage(data) {
+  localStorage.setItem('sg_sanciones', JSON.stringify(data));
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  DRIVING MODE
+// ══════════════════════════════════════════════════════════════════
+let drivingMode = localStorage.getItem('sg_driving_mode') === '1';
+let sgWakeLock = null;
+async function requestScreenWakeLock(){
+  if(!('wakeLock' in navigator)) return false;
+  try{
+    if(sgWakeLock && !sgWakeLock.released) return true;
+    sgWakeLock = await navigator.wakeLock.request('screen');
+    sgWakeLock.addEventListener('release',()=>{ sgWakeLock=null; });
+    return true;
+  }catch(e){ console.warn('SpeedGuard Wake Lock:',e); sgWakeLock=null; return false; }
+}
+async function releaseScreenWakeLock(){
+  if(!sgWakeLock) return;
+  try{ await sgWakeLock.release(); }catch{}
+  sgWakeLock=null;
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible' && drivingMode) requestScreenWakeLock();
+});
+function applyDrivingMode() {
+  document.body.classList.toggle('driving-mode', drivingMode);
+  const btn = document.getElementById('driveModeBtn');
+  const status = document.getElementById('driveStatusText');
+  if (btn) { btn.textContent = drivingMode ? '✓ MODO CONDUCCIÓN ACTIVO' : '🚗 ACTIVAR MODO CONDUCCIÓN'; btn.classList.toggle('active', drivingMode); }
+  if (status) status.textContent = drivingMode ? 'VIGILANDO' : 'LISTO';
+  const tripTab=document.getElementById('tab-info');
+  if(tripTab){tripTab.textContent=drivingMode?'⏹ FINALITZAR':'🧾 VIATGES';tripTab.title=drivingMode?'Finalitzar el trajecte i veure el resum':'Consultar historial de trajectes';tripTab.classList.toggle('trip-finish',drivingMode);}
+}
+async function exitDrivingMode(){ drivingMode=false; localStorage.setItem('sg_driving_mode','0'); await releaseScreenWakeLock(); applyDrivingMode(); const mc=document.getElementById('mainContent'); if(mc) mc.scrollTop=0; if(Date.now()-tripStartedAt>15000){saveCompletedTrip();showTripSummary();} }
+async function toggleDrivingMode() {
+  drivingMode = !drivingMode;
+  localStorage.setItem('sg_driving_mode', drivingMode ? '1' : '0');
+  if (drivingMode) {
+    primeRadarSpeech();
+    await enableDeviceCompass();
+    await requestScreenWakeLock();
+  } else {
+    await releaseScreenWakeLock();
+  }
+  applyDrivingMode();
+  // Put the speed display back at the top when entering driving mode.
+  const mc = document.getElementById('mainContent');
+  if (mc) mc.scrollTop = 0;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  COMPASS / RADAR DIRECTION
+// ══════════════════════════════════════════════════════════════════
+function normalizeDeg(v){return (Number(v)%360+360)%360}
+function relativeAngle(target,heading){return ((normalizeDeg(target-heading)+540)%360)-180}
+async function enableDeviceCompass(){
+  if(orientationListening || !('DeviceOrientationEvent' in window)) return;
+  try{
+    if(typeof DeviceOrientationEvent.requestPermission==='function'){
+      const p=await DeviceOrientationEvent.requestPermission();
+      if(p!=='granted') return;
+    }
+    window.addEventListener('deviceorientation',onDeviceOrientation,true);
+    orientationListening=true;
+  }catch{}
+}
+function onDeviceOrientation(e){
+  let h=null;
+  if(Number.isFinite(e.webkitCompassHeading)) h=e.webkitCompassHeading;
+  else if(Number.isFinite(e.alpha)) h=normalizeDeg(360-e.alpha);
+  if(h!==null){deviceCompassHeading=h;updateNearestRadarHUD();}
+}
+function getUsableHeading(){
+  // El rumb GPS (curs de moviment) és el millor indicador de direcció del vehicle quan es mou.
+  // A baixa velocitat només fem servir la brúixola del dispositiu com a aproximació.
+  const movingHeading=Number.isFinite(currentHeading)&&currentSpeed>=8&&(Date.now()-lastGpsHeadingAt)<15000;
+  if(movingHeading)return normalizeDeg(currentHeading);
+  if(Number.isFinite(deviceCompassHeading))return normalizeDeg(deviceCompassHeading);
+  if(Number.isFinite(currentHeading)&&(Date.now()-lastGpsHeadingAt)<30000)return normalizeDeg(currentHeading);
+  return null;
+}
+function closestRadarOfType(list, type){
+  if(lastLat===null||lastLon===null)return null;
+  return (list||[]).map(r=>({...r,d:distanceToRadar(r)})).filter(r=>Number.isFinite(r.d)&&(!Number.isFinite(getUsableHeading())||angleDiff(getUsableHeading(),bearingDeg(lastLat,lastLon,r.lat,r.lon))<=120)).sort((a,b)=>a.d-b.d)[0]||null;
+}
+function formatRadarDistance(m){ if(!Number.isFinite(m)||m<0)return '—'; return m>=1000?(m/1000).toFixed(1).replace('.',',')+' km':Math.round(m)+' m'; }
+function setCompassMarker(id,radar,heading){
+  const el=document.getElementById(id);if(!el)return;
+  const label=document.getElementById(id==='compassFixedMarker'?'compassFixedDistance':'compassAverageDistance');
+  if(!radar||!Number.isFinite(heading)||lastLat===null||lastLon===null){el.classList.remove('active');if(label)label.textContent='—';return;}
+  const rel=relativeAngle(bearingDeg(lastLat,lastLon,radar.lat,radar.lon),heading);
+  // Prioritza la lectura clara: icona i distància en una etiqueta compacta.
+  const x=Math.max(5,Math.min(95,50+(rel/180)*46));el.style.left=x+'%';el.classList.add('active');if(label)label.textContent=formatRadarDistance(radar.d*1000);
+}
+function updateCompassRibbon(){
+  const heading=getUsableHeading();
+  const name=document.getElementById('drhDrivingDirection'),degrees=document.getElementById('drhDrivingDegrees');
+  const dirs=[['compassN',0],['compassE',90],['compassS',180],['compassW',270]];
+  if(name)name.textContent=Number.isFinite(heading)?['N','E','S','O'][Math.round(normalizeDeg(heading)/90)%4]:'—';
+  if(degrees)degrees.textContent=Number.isFinite(heading)?Math.round(heading)+'°':'GPS…';
+  dirs.forEach(([id,bearing])=>{const el=document.getElementById(id);if(!el)return;let rel=Number.isFinite(heading)?relativeAngle(bearing,heading):bearing;el.style.left=(50+(rel/180)*46)+'%';});
+  const fixed=alertSettings.fixed?closestRadarOfType(radarDetection.fixed,'fixed'):null;
+  const average=alertSettings.average?closestRadarOfType(radarDetection.average,'average'):null;
+  const fixedEl=document.getElementById('compassFixedMarker'), averageEl=document.getElementById('compassAverageMarker');
+  setCompassMarker('compassFixedMarker',fixed,heading);setCompassMarker('compassAverageMarker',average,heading);
+  // If both radar types point to nearly the same bearing, fan them out horizontally.
+  if(fixedEl&&averageEl){
+    fixedEl.classList.remove('cluster-left');averageEl.classList.remove('cluster-right');
+    if(fixedEl.classList.contains('active')&&averageEl.classList.contains('active')){
+      const fx=parseFloat(fixedEl.style.left)||50, ax=parseFloat(averageEl.style.left)||50;
+      if(Math.abs(fx-ax)<9){const mid=(fx+ax)/2;fixedEl.style.left=Math.max(7,mid-4.5)+'%';averageEl.style.left=Math.min(93,mid+4.5)+'%';fixedEl.classList.add('cluster-left');averageEl.classList.add('cluster-right');}
+    }
+  }
+  const mobile=getSctMobileZone()&&alertSettings.mobileZones;
+  document.getElementById('legendFixed')?.classList.toggle('active',!!fixed);
+  document.getElementById('legendAverage')?.classList.toggle('active',!!average);
+  document.getElementById('legendMobile')?.classList.toggle('possible',!!mobile);
+}
+
+function nearestRadar(){
+  if(lastLat===null||lastLon===null) return null;
+  const all=[...radarDetection.average,...radarDetection.fixed].map(r=>({...r,d:distanceToRadar(r)})).filter(r=>Number.isFinite(r.d));
+  if(!all.length)return null;
+  const heading=getUsableHeading();
+  const ahead=all.filter(r=>{
+    if(r.type==='average' && !radarDirectionOK(r)) return false;
+    if(!Number.isFinite(heading)) return true;
+    const b=bearingDeg(lastLat,lastLon,r.lat,r.lon);
+    return angleDiff(heading,b)<=100;
+  }).sort((a,b)=>a.d-b.d);
+  return (ahead[0] || (!Number.isFinite(heading)?all.sort((a,b)=>a.d-b.d)[0]:null)) || null;
+}
+function updateNearestRadarHUD(){
+  // Manté els elements antics per compatibilitat amb altres pantalles; el HUD principal és la brúixola V22.
+  const radar=nearestRadar(),heading=getUsableHeading();
+  const typeEl=document.getElementById('drhRadarType'),distEl=document.getElementById('drhRadarDistance'),limitEl=document.getElementById('drhRadarLimit');
+  if(typeEl&&distEl&&limitEl){
+    if(!radar){typeEl.textContent='BUSCANT RADAR';distEl.textContent='—';limitEl.textContent='— km/h';}
+    else{typeEl.textContent=radar.type==='average'?'RADAR DE TRAM':'RADAR FIX';distEl.textContent=radar.d<1?(Math.round(radar.d*1000)+' m'):(radar.d.toFixed(1).replace('.',',')+' km');limitEl.textContent=`LÍMIT ${radar.limit||currentVia.limite} km/h`;}
+  }
+  const dial=document.getElementById('drhCompassDial'),headingEl=document.querySelector('#drhCompassDial .drh-heading');
+  if(dial&&headingEl){headingEl.textContent=Number.isFinite(heading)?Math.round(heading)+'°':'—';dial.classList.toggle('no-heading',!Number.isFinite(heading));}
+  updateCompassRibbon();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════════════════════════════
+function handleTripTab(){
+  // Single, non-overlapping navigation action: finish while driving; show archive otherwise.
+  if(drivingMode){ exitDrivingMode(); return; }
+  showScreen('info');
+  renderTripArchive();
+}
+function renderTripArchive(){
+  const el=document.getElementById('tripArchiveList'); if(!el)return;
+  const history=loadTripHistory();
+  if(!history.length){el.innerHTML='<h3>CAP VIATGE DESAT</h3><p>Quan finalitzis un trajecte de més de 15 segons, el resum es desarà aquí.</p>';return;}
+  el.innerHTML='<h3>HISTORIAL DESAT · '+history.length+'</h3>'+history.map((t,i)=>`<button type="button" class="trip-close" style="text-align:left;margin:6px 0" onclick="openSavedTrip(${i})">${new Date(t.start).toLocaleDateString()} · ${new Date(t.start).toLocaleTimeString()} · ${Math.round((t.durationSeconds||0)/60)} min · ${(t.radars||[]).length} alertes${t.distanceKm!=null?' · '+t.distanceKm+' km':''}</button>`).join('');
+}
+function openLatestTrip(){const history=loadTripHistory();if(history.length)openSavedTrip(0);else{renderTripArchive();}}
+function showTripAnalysis(){showScreen('analysis');}
+function renderTripAnalysis(tripId=null){
+  const picker=document.getElementById('analysisTripPicker'), content=document.getElementById('tripAnalysisContent');if(!picker||!content)return;
+  const history=loadTripHistory();if(!history.length){picker.innerHTML='<p>Encara no hi ha trajectes desats. Activa el mode de conducció per començar a enregistrar automàticament.</p>';content.innerHTML='';return;}
+  const chosen=history.find(t=>t.id===(tripId||selectedAnalysisTripId))||history[0];selectedAnalysisTripId=chosen.id;
+  picker.innerHTML='<label style="display:block;font-weight:800;margin:8px 0">Trajecte <select id="analysisTripSelect" onchange="renderTripAnalysis(this.value)" style="width:100%;padding:10px;border-radius:8px;background:#10191d;color:inherit;border:1px solid #355057">'+history.map(t=>`<option value="${t.id}" ${t.id===chosen.id?'selected':''}>${new Date(t.start).toLocaleDateString()} ${new Date(t.start).toLocaleTimeString()} · ${t.distanceKm??'—'} km</option>`).join('')+'</select></label>';
+  const pts=Array.isArray(chosen.track)?chosen.track:[];const speeds=pts.map(p=>Number(p.speed)||0);const maxSpeed=speeds.length?Math.round(Math.max(...speeds)):0;const avgSpeed=speeds.length?Math.round(speeds.reduce((a,b)=>a+b,0)/speeds.length):0;const overs=pts.filter(p=>p.limit!=null&&Number(p.speed)>Number(p.limit)).length;
+  let map='';if(pts.length>=2){map='<div id="tripAerialMap" class="analysis-map" role="application" aria-label="Mapa aèria interactiva del recorregut"></div><p class="analysis-map-help">Vista aèria · toca qualsevol punt del recorregut per consultar l’hora, la velocitat i el límit registrat. Els marcadors mostren els radars enregistrats.</p>';}else{map='<p>No hi ha prou mostres GPS desades per dibuixar el recorregut d’aquest viatge. Els trajectes nous es gravaran automàticament mentre el mode de conducció estigui actiu.</p>'; }
+  let graph='';if(pts.length>=2){const n=Math.min(pts.length,220),sampled=pts.filter((_,i)=>i%Math.max(1,Math.ceil(pts.length/n))===0),max=Math.max(30,...sampled.map(p=>Number(p.speed)||0),...sampled.map(p=>Number(p.limit)||0));const line=sampled.map((p,i)=>`${(8+i/(Math.max(1,sampled.length-1))*284).toFixed(1)},${(105-(Number(p.speed)||0)/max*86).toFixed(1)}`).join(' ');const lim=sampled.map((p,i)=>p.limit!=null?`${(8+i/(Math.max(1,sampled.length-1))*284).toFixed(1)},${(105-Number(p.limit)/max*86).toFixed(1)}`:null).filter(Boolean).join(' ');graph=`<h3>Velocitat durant el trajecte</h3><svg class="analysis-graph" viewBox="0 0 300 120" role="img" aria-label="Gràfic de velocitat"><g stroke="#294047"><path d="M8 20H292M8 48H292M8 76H292M8 105H292"/></g>${lim?`<polyline points="${lim}" fill="none" stroke="#ffbd70" stroke-width="1.5" stroke-dasharray="4 3"/>`:''}<polyline points="${line}" fill="none" stroke="#4fe0a3" stroke-width="2"/><text x="8" y="116" fill="#a9c4cc" font-size="8">Inici</text><text x="270" y="116" fill="#a9c4cc" font-size="8">Final</text></svg><p style="font-size:11px;color:var(--muted)">Línia verda: velocitat GPS. Línia discontínua taronja: límit disponible.</p>`;}
+  const events=(chosen.radars||[]).map(r=>`<div class="analysis-event"><div><strong>${r.type==='fixed'?'📷 Radar fix':r.type==='average'?'🚦 Radar de tram':'📍 Possible control mòbil'}</strong><div style="font-size:11px;color:var(--muted)">${new Date(r.time).toLocaleTimeString()} · ${r.ref||r.name||'Ubicació de radar no registrada'}</div></div><div style="text-align:right"><strong>${r.speed||0} km/h</strong><div style="font-size:10px;color:var(--muted)">límit ${r.limit||'—'}</div></div></div>`).join('');
+  content.innerHTML=`<div class="analysis-stat-grid"><div class="analysis-stat"><small>Distància</small><strong>${chosen.distanceKm??'—'} km</strong></div><div class="analysis-stat"><small>Velocitat màxima registrada</small><strong>${maxSpeed} km/h</strong></div><div class="analysis-stat"><small>Velocitat mitjana de les mostres</small><strong>${avgSpeed} km/h</strong></div><div class="analysis-stat"><small>Mostres per sobre del límit conegut</small><strong>${overs}</strong></div></div><h3>Mapa del recorregut</h3>${map}${graph}<h3>Radars i zones registrades</h3>${events||'<p>No hi ha radars registrats en aquest trajecte.</p>'}<p style="font-size:11px;color:var(--muted)">${pts.length} mostres GPS · les posicions dels radars només s’hi poden situar si la base de dades en proporciona coordenades.</p>`;
+  if(pts.length>=2) setTimeout(()=>renderTripAerialMap(chosen,pts),80);
+}
+let tripAerialMapInstance=null;
+function renderTripAerialMap(trip,pts){
+  const el=document.getElementById('tripAerialMap');if(!el)return;
+  if(!window.L){el.innerHTML='<div style="padding:16px;color:#fff">No s’ha pogut carregar el mapa aeri. Comprova la connexió a Internet i torna a obrir aquesta pestanya.</div>';return;}
+  if(tripAerialMapInstance){try{tripAerialMapInstance.remove();}catch{}tripAerialMapInstance=null;}
+  const valid=pts.filter(p=>Number.isFinite(Number(p.lat))&&Number.isFinite(Number(p.lon)));
+  if(valid.length<2){el.textContent='No hi ha prou coordenades vàlides.';return;}
+  const map=L.map(el,{preferCanvas:true,zoomControl:true,scrollWheelZoom:false}).setView([valid[0].lat,valid[0].lon],13);tripAerialMapInstance=map;
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles © Esri'}).addTo(map);
+  L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,opacity:.85,attribution:'Labels © Esri'}).addTo(map);
+  const latlngs=valid.map(p=>[Number(p.lat),Number(p.lon)]);
+  L.polyline(latlngs,{color:'#42efad',weight:4,opacity:.95,lineJoin:'round'}).addTo(map);
+  const stride=Math.max(1,Math.ceil(valid.length/260));
+  valid.forEach((p,i)=>{if(i%stride!==0&&i!==valid.length-1)return;const speed=Math.round(Number(p.speed)||0),limit=p.limit==null?'No disponible':Math.round(Number(p.limit))+' km/h';const marker=L.circleMarker([p.lat,p.lon],{radius:4,weight:1,color:'#f4fff9',fillColor:p.limit!=null&&speed>Number(p.limit)?'#f04444':'#28c98c',fillOpacity:.95}).addTo(map);marker.bindPopup(`<div class="analysis-point-detail"><strong>${new Date(p.t).toLocaleTimeString()}</strong><br>Velocitat: ${speed} km/h<br>Límit registrat: ${limit}<br>${p.road?'Via: '+String(p.road).replace(/[&<>"']/g,''):''}<br><small>Punt ${i+1} de ${valid.length}</small></div>`);});
+  const radarColors={fixed:'#ffb24b',average:'#58c7ff',mobile:'#ff6b6b'};
+  (trip.radars||[]).forEach(r=>{if(!Number.isFinite(Number(r.lat))||!Number.isFinite(Number(r.lon)))return;const label=r.type==='fixed'?'Radar fix':r.type==='average'?'Radar de tram':'Possible radar mòbil';const m=L.circleMarker([Number(r.lat),Number(r.lon)],{radius:8,color:'#fff',weight:2,fillColor:radarColors[r.type]||'#ffb24b',fillOpacity:1}).addTo(map);m.bindPopup(`<div class="analysis-point-detail"><strong>${label}</strong><br>Hora: ${new Date(r.time).toLocaleTimeString()}<br>Velocitat: ${Number(r.speed)||0} km/h<br>Límit registrat: ${r.limit||'No disponible'}${r.average?'<br>'+String(r.average).replace(/[&<>"']/g,''):''}</div>`);});
+  map.fitBounds(L.latLngBounds(latlngs).pad(.12),{maxZoom:16});setTimeout(()=>map.invalidateSize(),100);
+}
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(name + 'Screen').classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'editor') renderEditor();
+  if (name === 'analysis') renderTripAnalysis();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  VÍA GRID
+// ══════════════════════════════════════════════════════════════════
+function renderViaGrid() {
+  const grid = document.getElementById('viaGrid');
+  grid.innerHTML = TIPOS_VIA.map(v => `
+    <button class="via-btn ${v.id === currentVia.id ? 'active' : ''}"
+      onclick="selectVia('${v.id}')">
+      <span class="via-icon">${v.icon}</span>
+      ${v.label}<br>
+      <span class="via-limit">${v.limite}</span>
+    </button>
+  `).join('');
+}
+function selectVia(id) {
+  currentVia = TIPOS_VIA.find(v => v.id === id);
+  renderViaGrid();
+  update();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  SPEED INPUT MODES
+// ══════════════════════════════════════════════════════════════════
+function setInputMode(mode) {
+  inputMode = mode;
+  document.getElementById('btnGPS').classList.toggle('active', mode === 'gps');
+  document.getElementById('btnManual').classList.toggle('active', mode === 'manual');
+  document.getElementById('manualControls').style.display = mode === 'manual' ? 'block' : 'none';
+  if (mode === 'gps') startGPS(); else stopGPS();
+}
+
+function setManualSpeed(val) {
+  val = parseInt(val);
+  document.getElementById('manualSlider').value = val;
+  document.getElementById('manualVal').textContent = val + ' km/h';
+  currentSpeed = val;
+  rawGpsSpeed = val;
+  updateSpeedCalibrationControls();
+  update();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  SPEED CALIBRATION
+// ══════════════════════════════════════════════════════════════════
+const DEFAULT_SPEED_CALIBRATION = { fixed: 0, percent: 0 };
+let speedCalibration = (() => {
+  try { return {...DEFAULT_SPEED_CALIBRATION, ...(JSON.parse(localStorage.getItem('sg_speed_calibration') || '{}'))}; }
+  catch { return {...DEFAULT_SPEED_CALIBRATION}; }
+})();
+function applySpeedCalibration(raw) {
+  const base = Number.isFinite(raw) ? raw : 0;
+  return Math.max(0, base * (1 + speedCalibration.percent / 100) + speedCalibration.fixed);
+}
+function formatSigned(v, unit='') {
+  const n = Number(v);
+  return (n > 0 ? '+' : '') + n.toFixed(1).replace('.0','') + unit;
+}
+function updateSpeedCalibrationControls() {
+  const a=document.getElementById('speedCorrectionRange'), b=document.getElementById('speedCorrectionPctRange');
+  if(a){a.value=speedCalibration.fixed; document.getElementById('speedCorrectionValue').textContent=formatSigned(speedCalibration.fixed,' km/h');}
+  if(b){b.value=speedCalibration.percent; document.getElementById('speedCorrectionPctValue').textContent=formatSigned(speedCalibration.percent,'%');}
+  const preview=document.getElementById('speedCalibrationPreview');
+  if(preview) preview.textContent=`GPS ${Math.round(rawGpsSpeed)} → ${Math.round(applySpeedCalibration(rawGpsSpeed))} km/h`;
+}
+function saveSpeedCalibration(){ localStorage.setItem('sg_speed_calibration',JSON.stringify(speedCalibration)); }
+function bindSpeedCalibrationControls(){
+  const a=document.getElementById('speedCorrectionRange'), b=document.getElementById('speedCorrectionPctRange');
+  if(a)a.addEventListener('input',()=>{speedCalibration.fixed=Number(a.value);saveSpeedCalibration();updateSpeedCalibrationControls();if(inputMode==='gps'){currentSpeed=applySpeedCalibration(rawGpsSpeed);update();}});
+  if(b)b.addEventListener('input',()=>{speedCalibration.percent=Number(b.value);saveSpeedCalibration();updateSpeedCalibrationControls();if(inputMode==='gps'){currentSpeed=applySpeedCalibration(rawGpsSpeed);update();}});
+  updateSpeedCalibrationControls();
+}
+function resetSpeedCalibration(){ speedCalibration={...DEFAULT_SPEED_CALIBRATION}; saveSpeedCalibration(); updateSpeedCalibrationControls(); if(inputMode==='gps'){currentSpeed=applySpeedCalibration(rawGpsSpeed);update();} }
+
+// ══════════════════════════════════════════════════════════════════
+//  GPS
+// ══════════════════════════════════════════════════════════════════
+function startGPS() {
+  if (!navigator.geolocation) {
+    setGPSStatus('error', 'GPS no disponible en aquest navegador');
+    return;
+  }
+  // Evita acumular diversos watchPosition actius si es torna a seleccionar GPS.
+  if (gpsWatchId != null) {
+    try { navigator.geolocation.clearWatch(gpsWatchId); } catch {}
+    gpsWatchId = null;
+  }
+  setGPSStatus('waiting', 'Buscant senyal GPS…');
+  try { if (!tripStartedAt || Date.now()-tripStartedAt>6*60*60*1000) startNewTrip(); } catch (e) { console.warn('No s’ha pogut iniciar l’historial del trajecte', e); }
+  try {
+    gpsWatchId = navigator.geolocation.watchPosition(
+      pos => {
+        try {
+          const coords = pos && pos.coords;
+          if (!coords || !Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)) {
+            setGPSStatus('waiting', 'Esperant coordenades GPS…');
+            return;
+          }
+          const accuracy = Number.isFinite(coords.accuracy) ? coords.accuracy : Infinity;
+          lastGpsAccuracy = accuracy;
+          lastGpsTimestamp = pos.timestamp || Date.now();
+          if(accuracy>65) logTripDiagnostic('gps','GPS amb precisió baixa',{accuracy:Math.round(accuracy)});
+          const spd = coords.speed != null ? coords.speed * 3.6 : null;
+          if (spd != null && Number.isFinite(spd)) { rawGpsSpeed = spd; currentSpeed = applySpeedCalibration(spd); }
+          if (Number.isFinite(coords.heading) && coords.heading >= 0 && currentSpeed >= 8) {
+            currentHeading = normalizeDeg(coords.heading);
+            lastGpsHeadingAt = Date.now();
+          }
+
+          // La posició sempre es mostra; la precisió només condiciona les consultes cartogràfiques.
+          lastLat = coords.latitude;
+          lastLon = coords.longitude;
+          try { recordTrackSample(); } catch(e) { console.warn("Error enregistrant el recorregut",e); }
+          const coordEl = document.getElementById('gpsCoords');
+          if (coordEl) coordEl.textContent = `${lastLat.toFixed(5)}, ${lastLon.toFixed(5)} · ±${Math.round(accuracy)} m`;
+          setGPSStatus(accuracy <= 50 ? 'ok' : 'waiting', accuracy <= 50 ? `GPS actiu ±${Math.round(accuracy)} m` : `GPS actiu · precisió ±${Math.round(accuracy)} m`);
+
+          // Aïllem cada actualització visual: un component trencat no ha d'aturar el GPS.
+          try { update(); } catch (e) { console.warn('Error actualitzant velocitat/HUD', e); }
+          try { if(lastTripLat!==null&&lastTripLon!==null){const td=haversineKm(lastTripLat,lastTripLon,lat,lon);if(td>=0.003&&td<=0.2)tripDistanceKm+=td;} lastTripLat=lat;lastTripLon=lon; } catch(e) { console.warn('Error calculant distància del viatge',e); }
+          try { updateCompassRibbon(); } catch (e) { console.warn('Error actualitzant brúixola', e); }
+          try { updateSegmentRadarPosition(lastLat, lastLon); } catch (e) { console.warn('Error actualitzant radar de tram', e); }
+          try { updateNearestRadarHUD(); } catch (e) { console.warn('Error actualitzant HUD de radars', e); }
+
+          if (accuracy <= 65) {
+            if (!osmQuerying && Date.now()-lastRoadQueryAt >= 2500) queryOSMLimit();
+            if (!radarQuerying && (Date.now() - lastRadarQueryAt > 6000)) detectRadars();
+          } else {
+            const status = document.getElementById('osmStatus');
+            if (status) status.textContent = 'GPS ACTIU · esperant més precisió per detectar la via';
+          }
+        } catch (e) {
+          console.error('Error processant la posició GPS', e);
+          setGPSStatus('waiting', 'GPS rebut; error actualitzant la pantalla');
+        }
+      },
+      err => {
+        const msgs = { 1:'Permís de localització denegat', 2:'Posició GPS temporalment no disponible', 3:'S’ha esgotat el temps d’espera del GPS' };
+        setGPSStatus('error', msgs[err.code] || 'Error GPS');
+        console.warn('Geolocation error', err.code, err.message);
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 }
+    );
+  } catch (e) {
+    console.error('No s’ha pogut iniciar watchPosition', e);
+    setGPSStatus('error', location.protocol === 'https:' || location.hostname === 'localhost' ? 'No s’ha pogut iniciar el GPS' : 'Cal obrir l’app amb HTTPS per usar el GPS');
+  }
+}
+function stopGPS() {
+  if (gpsWatchId != null) navigator.geolocation.clearWatch(gpsWatchId);
+  setGPSStatus('error', 'GPS inactivo');
+}
+
+function setMaintenanceStatus(message, state='info') {
+  const el=document.getElementById('maintenanceStatus');
+  if(!el)return;
+  el.textContent=message;
+  el.style.color=state==='ok'?'var(--ok)':state==='error'?'var(--red)':'var(--muted)';
+}
+function setMaintenanceBusy(id,busy,label) {
+  const b=document.getElementById(id); if(!b)return;
+  b.disabled=busy; if(label)b.dataset.originalLabel ||= b.textContent;
+  b.textContent=busy?'⏳ Actualitzant…':(b.dataset.originalLabel||b.textContent);
+}
+async function forceRefreshRadars() {
+  if(lastLat===null||lastLon===null){setMaintenanceStatus('Encara no hi ha posició GPS. Connecta el GPS i torna-ho a provar.','error');return;}
+  if(radarQuerying){setMaintenanceStatus('La consulta de radars ja està en curs.','info');return;}
+  setMaintenanceBusy('forceRadarsBtn',true);setMaintenanceStatus('Consultant radars a Internet; s’ignorarà la memòria cau…');
+  try { localStorage.removeItem('sg_radar_cache_v24'); await detectRadars(true); markRadarDataUpdated();
+    const msg=document.getElementById('drhAlert')?.textContent||'';
+    const ok=/ACTUALITZATS|LOCAL/i.test(msg);
+    setMaintenanceStatus(ok?'Consulta de radars finalitzada. '+msg:'Consulta finalitzada; si no hi ha dades noves, el servei cartogràfic pot no respondre.','ok');
+  } catch(e){console.warn('Actualització manual de radars',e);setMaintenanceStatus('No s’han pogut actualitzar els radars. Comprova la connexió a Internet.','error');}
+  finally{setMaintenanceBusy('forceRadarsBtn',false);}
+}
+async function forceRefreshDatabase() {
+  if(lastLat===null||lastLon===null){setMaintenanceStatus('Encara no hi ha posició GPS. Connecta el GPS i torna-ho a provar.','error');return;}
+  if(osmQuerying){setMaintenanceStatus('La consulta de la via ja està en curs.','info');return;}
+  if(lastGpsAccuracy>65){setMaintenanceStatus('GPS massa imprecís (±'+Math.round(lastGpsAccuracy)+' m). Espera una millor ubicació i torna-ho a provar.','error');return;}
+  setMaintenanceBusy('forceDatabaseBtn',true);setMaintenanceStatus('Actualitzant la cartografia i el límit de velocitat des d’OpenStreetMap…');
+  try {localStorage.removeItem(sgRoadCacheKey(lastLat,lastLon));await queryOSMLimit(true); markMapDataUpdated();
+    const meta=document.getElementById('roadDiagnosticMeta')?.textContent||'';
+    setMaintenanceStatus('Consulta cartogràfica acabada. '+(meta||'Revisa la via detectada.'),'ok');
+  }catch(e){console.warn('Actualització manual de cartografia',e);setMaintenanceStatus('No s’ha pogut actualitzar la base cartogràfica. Prova-ho més tard.','error');}
+  finally{setMaintenanceBusy('forceDatabaseBtn',false);}
+}
+function forceGPSReconnect() {
+  if(inputMode!=='gps'){inputMode='gps';document.getElementById('btnGPS')?.classList.add('active');document.getElementById('btnManual')?.classList.remove('active');document.getElementById('manualControls').style.display='none';}
+  if(gpsWatchId!=null){try{navigator.geolocation.clearWatch(gpsWatchId);}catch{}gpsWatchId=null;}
+  lastGpsTimestamp=0;lastGpsAccuracy=Infinity;
+  setMaintenanceStatus('Reiniciant la petició d’ubicació d’alta precisió…');
+  startGPS();
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      const c=pos.coords;if(!c||!Number.isFinite(c.latitude)||!Number.isFinite(c.longitude))return;
+      lastLat=c.latitude;lastLon=c.longitude;lastGpsAccuracy=c.accuracy??Infinity;lastGpsTimestamp=pos.timestamp||Date.now();
+      const coordEl=document.getElementById('gpsCoords');if(coordEl)coordEl.textContent=`${lastLat.toFixed(5)}, ${lastLon.toFixed(5)} · ±${Math.round(lastGpsAccuracy)} m`;
+      setGPSStatus(lastGpsAccuracy<=50?'ok':'waiting',`GPS actiu · precisió ±${Math.round(lastGpsAccuracy)} m`);
+      setMaintenanceStatus('GPS reconnectat. Precisió actual ±'+Math.round(lastGpsAccuracy)+' m.','ok');
+      if(lastGpsAccuracy<=65){queryOSMLimit();detectRadars();}
+    },err=>{const m=err.code===1?'Permís de localització denegat':err.code===2?'Ubicació no disponible ara mateix':'Temps d’espera del GPS esgotat';setMaintenanceStatus(m+'; el GPS continuarà intentant obtenir posició en segon pla.','error');}, {enableHighAccuracy:true,timeout:20000,maximumAge:0});
+  }
+}
+
+function setGPSStatus(state, text) {
+  const prev=document.getElementById('gpsText')?.textContent||''; if(state==='error' || (state==='waiting' && /actiu|precisió/i.test(prev))) logTripDiagnostic('gps-status',text,{state});
+  const dot = document.getElementById('gpsDot');
+  dot.className = 'gps-dot ' + state;
+  document.getElementById('gpsText').textContent = text;
+  const chip=document.getElementById('healthGps'); if(chip){chip.className='health-chip '+(state==='ok'?'ok':state==='error'?'error':'warn');chip.textContent=lastGpsAccuracy<Infinity?'GPS: ±'+Math.round(lastGpsAccuracy)+' m':'GPS: '+(state==='error'?'error':'esperant');}
+}
+function setHealthChip(id,state,text){const el=document.getElementById(id);if(el){el.className='health-chip '+state;el.textContent=text;}}
+function updateInternetIndicator(){setHealthChip('healthInternet',navigator.onLine?'ok':'error','Internet: '+(navigator.onLine?'connectat':'sense connexió'));}
+window.addEventListener('online',updateInternetIndicator);window.addEventListener('offline',updateInternetIndicator);
+updateInternetIndicator();
+function markMapDataUpdated(){setHealthChip('healthMap','ok','Cartografia: '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));logTripDiagnostic('map','Cartografia actualitzada');}
+function markRadarDataUpdated(){setHealthChip('healthMap','ok','Dades: radars '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));logTripDiagnostic('radars','Dades de radars actualitzades');}
+
+// Cache local de cartografia i radars. El GPS continua actualitzant-se en temps real.
+const SG_ROAD_CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
+const SG_RADAR_CACHE_TTL = 24 * 60 * 60 * 1000;
+function sgCacheRead(key){try{const raw=localStorage.getItem(key);return raw?JSON.parse(raw):null;}catch{return null;}}
+function sgCacheWrite(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch(e){try{const keys=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith('sg_road_cache_'))keys.push(k);}keys.sort((a,b)=>(sgCacheRead(a)?.savedAt||0)-(sgCacheRead(b)?.savedAt||0));for(const k of keys.slice(0,Math.max(1,keys.length-20)))localStorage.removeItem(k);localStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}}
+function sgRoadCacheKey(lat,lon){return 'sg_road_cache_'+Math.floor(lat*1000)+'_'+Math.floor(lon*1000);}
+function sgKmBetween(aLat,aLon,bLat,bLon){return haversineKm(aLat,aLon,bLat,bLon);}
+
+// ══════════════════════════════════════════════════════════════════
+//  OPENSTREETMAP / OVERPASS API — límite de velocidad
+// ══════════════════════════════════════════════════════════════════
+async function queryOSMLimit(forceRefresh = false) {
+  if (lastLat===null || lastLon===null || osmQuerying) return;
+  if (lastGpsAccuracy > 65) { const status=document.getElementById('osmStatus'); if(status)status.textContent='GPS IMPRECÍS — esperant millor senyal'; return; }
+  osmQuerying=true; lastRoadQueryAt=Date.now();
+  const queryLat=lastLat,queryLon=lastLon;
+  const status=document.getElementById('osmStatus'); if(status) status.textContent='⟳ VIA…';
+  // Cada cel·la GPS es consulta una vegada; guardem geometria local 7 dies.
+  const roadCacheKey=sgRoadCacheKey(queryLat,queryLon);
+  const cachedRoad=forceRefresh ? null : sgCacheRead(roadCacheKey);
+  const q=`[out:json][timeout:5];way(around:150,${queryLat},${queryLon})[highway][highway!~"^(footway|path|cycleway|steps|pedestrian|service)$"];out tags geom;`;
+  const endpoints=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+  // Distància punt-segment en metres amb projecció local; evita errors de longitud/latitud en graus.
+  const pointSeg=(lat,lon,a,b)=>{const lat0=lat*Math.PI/180,scaleX=111320*Math.cos(lat0),scaleY=110540;const x=(lon-queryLon)*scaleX,y=(lat-queryLat)*scaleY,x1=(a.lon-queryLon)*scaleX,y1=(a.lat-queryLat)*scaleY,x2=(b.lon-queryLon)*scaleX,y2=(b.lat-queryLat)*scaleY;const dx=x2-x1,dy=y2-y1;const t=Math.max(0,Math.min(1,((x-x1)*dx+(y-y1)*dy)/(dx*dx+dy*dy||1)));const px=x1+t*dx,py=y1+t*dy;return {d:Math.hypot(x-px,y-py)/1000,px,py}};
+  try{
+    let data=null;
+    if(cachedRoad&&Array.isArray(cachedRoad.elements)&&Date.now()-cachedRoad.savedAt<SG_ROAD_CACHE_TTL){data={elements:cachedRoad.elements};if(status)status.textContent='● VIA LOCAL';}
+    if(!data){
+      for(const ep of endpoints){try{const res=await fetch(ep+'?data='+encodeURIComponent(q),{signal:AbortSignal.timeout(6500)});if(!res.ok)continue;const d=await res.json();if(Array.isArray(d.elements)){data=d;break}}catch{}}
+      if(data)sgCacheWrite(roadCacheKey,{savedAt:Date.now(),lat:queryLat,lon:queryLon,elements:data.elements});
+    }
+    if(!data && cachedRoad&&Array.isArray(cachedRoad.elements)){data={elements:cachedRoad.elements};if(status)status.textContent='⚠ VIA LOCAL ANTIGA';}
+    if(!data) throw new Error('no data');
+    // No apliquis una resposta antiga si el vehicle ja s'ha mogut força durant la consulta.
+    if(haversineKm(queryLat,queryLon,lastLat,lastLon)>0.12){ if(status)status.textContent='⟳ ACTUALITZANT POSICIÓ'; return; }
+    const candidates=[];
+    for(const e of data.elements||[]){
+      if(e.type!=='way'||!e.geometry?.length) continue;
+      let best={d:Infinity,bearing:null};
+      for(let i=0;i<e.geometry.length-1;i++){
+        const a=e.geometry[i],b=e.geometry[i+1],seg=pointSeg(queryLat,queryLon,a,b); if(seg.d<best.d) best={d:seg.d,bearing:bearingDeg(a.lat,a.lon,b.lat,b.lon)};
+      }
+      const tags=e.tags||{}; const roadBearing=best.bearing; const diff=Number.isFinite(currentHeading)&&Number.isFinite(roadBearing)?angleDiff(currentHeading,roadBearing):90;
+      const speed=parseMaxspeed(tags.maxspeed||tags['maxspeed:forward']||tags['maxspeed:lanes']);
+      const named=tags.ref||tags.name;
+      const roadDirDiff=Number.isFinite(currentHeading)&&Number.isFinite(roadBearing)?Math.min(diff,180-diff):90; const score=best.d*1000 + roadDirDiff*0.35 - (speed?12:0) - (named?3:0) + (tags.oneway==='yes'&&diff>90?20:0);
+      candidates.push({e,d:best.d,bearing:roadBearing,diff,speed,score});
+    }
+    candidates.sort((a,b)=>a.score-b.score); const c=candidates[0];
+    if(!c || c.d>0.09){
+      // Una lectura puntual deficient no invalida una via ja confirmada: GPS/Overpass poden ballar uns metres.
+      const hasRecentConfirmedRoad=!!currentRoadRef && ['ok','warn'].includes(roadDetection.confidence) &&
+        (Date.now()-lastConfirmedRoadAt)<30*60*1000;
+      if(hasRecentConfirmedRoad){
+        roadDetection={...roadDetection,updatedAt:Date.now()};
+        updateRoadDiagnostic(); updateMobileZoneHUD(); if(status)status.textContent='● VIA CONFIRMADA · mantenint última lectura'; return;
+      }
+      roadDetection={...roadDetection,confidence:'bad',updatedAt:Date.now(),distanceM:c?c.d*1000:null};
+      currentRoadRef=''; currentRoadName='';
+      updateRoadDiagnostic(); updateMobileZoneHUD(); if(status)status.textContent='– VIA NO SEGURA'; return;
+    }
+    const t=c.e.tags||{}; const limit=c.speed||null; const ref=t.ref||''; const name=t.name||'';
+    const confidence=(c.d<.025&&Math.min(c.diff,180-c.diff)<45)?'ok':(c.d<.06&&Math.min(c.diff,180-c.diff)<75)?'warn':'bad';
+    const candidateRef=ref||name||'';
+    const existingRef=currentRoadRef||roadDetection.ref||roadDetection.name||'';
+    const sameRoad=!!candidateRef && !!existingRef && candidateRef===existingRef;
+    // Una via ja confirmada es manté si la nova lectura és només probable/ambigua.
+    // Només substituïm la via quan apareix una nova candidata confirmada (o no n'hi havia cap).
+    if(confidence==='ok' || (confidence==='warn' && (!existingRef || sameRoad))){
+      roadDetection={ref,name,limit,highway:t.highway||'',distanceM:c.d*1000,bearing:c.bearing,headingDiff:c.diff,source:'OSM',updatedAt:Date.now(),confidence};
+      currentRoadRef=ref||'';currentRoadName=name||'';lastConfirmedRoadAt=Date.now();lastConfirmedRoadLat=queryLat;lastConfirmedRoadLon=queryLon;
+    } else if(sameRoad){
+      roadDetection={...roadDetection,distanceM:c.d*1000,headingDiff:c.diff,updatedAt:Date.now()};
+    } else if(!existingRef){
+      roadDetection={ref,name,limit,highway:t.highway||'',distanceM:c.d*1000,bearing:c.bearing,headingDiff:c.diff,source:'OSM',updatedAt:Date.now(),confidence};
+    }
+    updateRoadDiagnostic(); updateMobileZoneHUD(); markMapDataUpdated();
+    if(limit){
+      const found=TIPOS_VIA.reduce((best,v)=>Math.abs(v.limite-limit)<Math.abs(best.limite-limit)?v:best);
+      currentVia={...found,limite:limit}; renderViaGrid(); update();
+    }
+  }catch(e){roadDetection={...roadDetection,confidence:'bad',updatedAt:Date.now()};updateRoadDiagnostic();if(status)status.textContent='✗ VIA OSM';}
+  finally{osmQuerying=false;}
+}
+function updateRoadDiagnostic(){
+  const box=document.getElementById('roadDiagnostic'); if(!box)return; const n=document.getElementById('roadDiagnosticName'),l=document.getElementById('roadDiagnosticLimit'),m=document.getElementById('roadDiagnosticMeta');
+  const label=roadDetection.ref||roadDetection.name||'VIA NO DETECTADA'; n.textContent=label; l.textContent=roadDetection.limit?roadDetection.limit+' km/h':'—';
+  const age=roadDetection.updatedAt?Math.max(0,(Date.now()-roadDetection.updatedAt)/1000):999; const d=Number.isFinite(roadDetection.distanceM)?Math.round(roadDetection.distanceM):null; const hd=Number.isFinite(roadDetection.headingDiff)?Math.round(roadDetection.headingDiff):null;
+  const state=roadDetection.confidence==='ok'?'VIA ACTUAL CONFIRMADA':roadDetection.confidence==='warn'?'VIA PROBABLE — comprovant direcció':'VIA NO CONFIRMADA';
+  box.className='road-diagnostic visible '+roadDetection.confidence; m.textContent=`${state} · ${d!==null?d+' m del tram':''}${hd!==null?' · direcció '+hd+'°':''} · actualitzat fa ${age.toFixed(1)} s`;
+  const confidence=document.getElementById('roadConfidence');if(confidence){const c=roadDetection.confidence;confidence.className='road-confidence '+c;confidence.textContent=c==='ok'?'✓ VIA CONFIRMADA':c==='warn'?'! VIA PROBABLE · NO CONFIAR NOMÉS EN AQUEST LÍMIT':'⚠ VIA NO CONFIRMADA · LÍMIT NO VERIFICAT';}
+  const prev=window.__sgLastRoadConfidence;if(prev!==roadDetection.confidence){window.__sgLastRoadConfidence=roadDetection.confidence;logTripDiagnostic('road-confidence',state,{confidence:roadDetection.confidence,road:roadDetection.ref||roadDetection.name||'',limit:roadDetection.limit||null});}
+}
+
+let radarSpeechPrimed=false, radarSpeechLastAt=0, radarSpeechLastText='';
+function primeRadarSpeech(){
+  // iOS Safari sovint només permet iniciar SpeechSynthesis després d'una interacció explícita.
+  try{
+    if(!('speechSynthesis' in window)||!('SpeechSynthesisUtterance' in window))return false;
+    const synth=window.speechSynthesis; synth.cancel();
+    const u=new SpeechSynthesisUtterance(' ');
+    u.lang=alertLang()==='es'?'es-ES':'ca-ES';u.volume=0;u.rate=1;
+    u.onend=()=>{radarSpeechPrimed=true;};
+    u.onerror=()=>{};
+    synth.speak(u);synth.resume();radarSpeechPrimed=true;return true;
+  }catch(e){console.warn('SpeedGuard: no s’ha pogut preparar la veu',e);return false;}
+}
+function speakRadar(text) {
+  if(!alertSettings.voice || !text) return false;
+  try {
+    if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return false;
+    const synth=window.speechSynthesis, now=Date.now(), message=String(text).trim();
+    if(!message)return false;
+    // Evita repetir la mateixa frase massa de pressa, però no cancel·la una alerta que ja s'està reproduint.
+    if(message===radarSpeechLastText && now-radarSpeechLastAt<5000)return false;
+    if(!radarSpeechPrimed){synth.resume();}
+    const u=new SpeechSynthesisUtterance(message);
+    u.lang=alertLang()==='es'?'es-ES':'ca-ES';u.rate=1.0;u.volume=1;
+    u.onerror=(e)=>{console.warn('SpeedGuard: error de veu',e.error||e);logTripDiagnostic('speech-error','No s’ha pogut reproduir l’avís de veu',{error:e.error||'unknown'});};
+    u.onstart=()=>{radarSpeechPrimed=true;};
+    u.onend=()=>{radarSpeechPrimed=true;};
+    synth.resume();synth.speak(u);
+    radarSpeechLastText=message;radarSpeechLastAt=now;return true;
+  } catch(e) { console.warn('SpeedGuard: veu no disponible',e); return false; }
+}
+function showRadarAlert(text,type='fixed'){
+  const el=document.getElementById('autoRadarAlert'),hud=document.getElementById('drivingRadarHUD'),ha=document.getElementById('drhAlert');
+  if(!alertSettings.visual) return;
+  if(el){el.style.display='block';el.className='auto-radar-alert '+type;el.textContent=text;}
+  if(hud&&ha){hud.classList.remove('fixed','danger');if(type==='fixed')hud.classList.add('fixed');if(type==='danger')hud.classList.add('danger');ha.textContent=text;hud.classList.add('visible');}
+}
+function distanceToRadar(r){return haversineKm(lastLat,lastLon,r.lat,r.lon)}
+function bearingDeg(lat1,lon1,lat2,lon2){const p1=lat1*Math.PI/180,p2=lat2*Math.PI/180,dl=(lon2-lon1)*Math.PI/180,y=Math.sin(dl)*Math.cos(p2),x=Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl);return (Math.atan2(y,x)*180/Math.PI+360)%360}
+function angleDiff(a,b){let d=Math.abs(a-b)%360;return d>180?360-d:d}
+function radarDirectionOK(r){
+  const heading=getUsableHeading();
+  // Prioritat de seguretat: si no tenim un rumb fiable del vehicle, avisem.
+  if(!Number.isFinite(heading)||currentSpeed<15)return true;
+
+  // Només filtrem quan la font proporciona informació de direcció utilitzável.
+  // Radars fixos sense directionDeg (cas habitual a OSM): SEMPRE avisar,
+  // encara que la posició sembli estar darrere o a la calçada contrària.
+  if(Number.isFinite(r.directionDeg)) return angleDiff(heading,r.directionDeg)<=65;
+
+  // En radars de tram, la geometria del tram permet inferir-ne el sentit.
+  if(r.type==='average'&&Number.isFinite(r.toLat)&&Number.isFinite(r.toLon)){
+    const dStart=haversineKm(lastLat,lastLon,r.lat,r.lon);
+    const dEnd=haversineKm(lastLat,lastLon,r.toLat,r.toLon);
+    const routeBearing=dStart<=dEnd
+      ? bearingDeg(r.lat,r.lon,r.toLat,r.toLon)
+      : bearingDeg(r.toLat,r.toLon,r.lat,r.lon);
+    return angleDiff(heading,routeBearing)<=65;
+  }
+
+  // Sense dades de direcció fiables, no descartem el radar.
+  return true;
+}
+function parseRadarDirection(tags){
+  if(!tags)return null;
+  const raw=String(tags.direction||tags['camera:direction']||tags['traffic_sign:direction']||'').trim().toLowerCase();
+  if(!raw)return null;
+  if(/^\d{1,3}(?:\.\d+)?$/.test(raw)){const n=Number(raw);return n>=0&&n<360?n:null;}
+  const dirs={n:0,north:0,ne:45,northeast:45,e:90,east:90,se:135,southeast:135,s:180,south:180,sw:225,southwest:225,w:270,west:270,nw:315,northwest:315};
+  return Object.prototype.hasOwnProperty.call(dirs,raw)?dirs[raw]:null;
+}
+async function detectRadars(forceRefresh = false){
+  if(lastLat===null||lastLon===null||radarQuerying)return; radarQuerying=true; lastRadarQueryAt=Date.now();
+  const query=`[out:json][timeout:10];(node(around:8000,${lastLat},${lastLon})[highway=speed_camera];rel(around:8000,${lastLat},${lastLon})[type=enforcement][enforcement=average_speed];rel(around:8000,${lastLat},${lastLon})[enforcement=average_speed];);out body;>;out body;`;
+  const endpoints=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+  try{
+    // La mateixa cobertura de radars es reutilitza fins a 24 h mentre som a menys de 4 km del centre.
+    const radarCache=sgCacheRead('sg_radar_cache_v24');
+    if(!forceRefresh&&radarCache&&Array.isArray(radarCache.fixed)&&Array.isArray(radarCache.average)&&Date.now()-radarCache.savedAt<SG_RADAR_CACHE_TTL&&sgKmBetween(lastLat,lastLon,radarCache.lat,radarCache.lon)<4){
+      radarDetection.fixed=radarCache.fixed;radarDetection.average=radarCache.average;
+      checkRadarProximity();updateNearestRadarHUD();updateRadarScanHUD('● RADARS EN MEMÒRIA LOCAL');return;
+    }
+    let data=null; for(const ep of endpoints){try{const res=await fetch(ep+'?data='+encodeURIComponent(query),{signal:AbortSignal.timeout(12000)});if(!res.ok)continue;const c=await res.json();if(c&&Array.isArray(c.elements)){data=c;break}}catch{}}
+    if(!data){
+      if(radarCache&&Array.isArray(radarCache.fixed)&&Array.isArray(radarCache.average)&&Date.now()-radarCache.savedAt<7*24*60*60*1000&&sgKmBetween(lastLat,lastLon,radarCache.lat,radarCache.lon)<7){radarDetection.fixed=radarCache.fixed;radarDetection.average=radarCache.average;checkRadarProximity();updateNearestRadarHUD();updateRadarScanHUD('⚠ RADARS LOCALS · DADES ANTIGUES');}
+      return;
+    }
+    const nodes=new Map(),ways=new Map(),rels=[]; for(const e of(data.elements||[])){if(e.type==='node'&&e.lat!=null)nodes.set(e.id,e);else if(e.type==='way')ways.set(e.id,e);else if(e.type==='relation')rels.push(e)}
+    radarDetection.fixed=(data.elements||[]).filter(e=>e.type==='node'&&e.tags?.highway==='speed_camera').map(e=>({id:'f'+e.id,lat:e.lat,lon:e.lon,limit:parseMaxspeed(e.tags?.maxspeed)||currentVia.limite,type:'fixed',directionDeg:parseRadarDirection(e.tags)})); radarDetection.average=[];
+    for(const rel of rels){let from=null,to=null,sectionNodes=[];for(const m of(rel.members||[])){if(m.type==='node'&&nodes.has(m.ref)){if(m.role==='from')from=nodes.get(m.ref);if(m.role==='to')to=nodes.get(m.ref)}if(m.role==='section'&&m.type==='way'&&ways.has(m.ref)){const wn=ways.get(m.ref).nodes||[];if(wn.length){const a=nodes.get(wn[0]),b=nodes.get(wn[wn.length-1]);if(a)sectionNodes.push(a);if(b)sectionNodes.push(b)}}}if(!from&&sectionNodes.length)from=sectionNodes[0];if(!to&&sectionNodes.length)to=sectionNodes[sectionNodes.length-1];if(!from||!to)continue;const limit=parseMaxspeed(rel.tags?.maxspeed||rel.tags?.['maxspeed:enforcement'])||currentVia.limite,total=haversineKm(from.lat,from.lon,to.lat,to.lon);if(total<.1)continue;radarDetection.average.push({id:'a'+rel.id,lat:from.lat,lon:from.lon,toLat:to.lat,toLon:to.lon,totalKm:total,limit,type:'average',path:sectionNodes.map(n=>({lat:n.lat,lon:n.lon}))})}
+    sgCacheWrite('sg_radar_cache_v24',{savedAt:Date.now(),lat:lastLat,lon:lastLon,fixed:radarDetection.fixed,average:radarDetection.average});
+    checkRadarProximity();updateNearestRadarHUD();updateRadarScanHUD('● RADARS ACTUALITZATS');markRadarDataUpdated();
+  }catch(e){updateRadarScanHUD('⚠ RADARS: dades no disponibles')}finally{radarQuerying=false}
+}
+function updateRadarScanHUD(message){const hud=document.getElementById('drivingRadarHUD'),live=document.getElementById('drhLive'),alert=document.getElementById('drhAlert');if(!hud||!live||!alert||segmentRadar.active)return;live.style.display='none';alert.textContent=message||T().scanning(radarDetection.fixed.length+radarDetection.average.length);hud.classList.add('visible')}
+function autoStartAverageRadar(av){
+  const blockedUntil=completedAverageRadars.get(av.id)||0; if(blockedUntil>Date.now()) return;
+  const entered=haversineKm(av.lat,av.lon,lastLat,lastLon);
+  const initialDone=Math.max(0,Math.min(av.totalKm*0.98,entered));
+  segmentRadar={active:true,auto:true,id:av.id,totalKm:av.totalKm,limitKmh:av.limit,distanceKm:initialDone,startTime:performance.now(),lastLat,lastLon,completed:false,entrySpeed:currentSpeed};
+  if(!loggedRadarIds.has(av.id)) logRadarPass(av,'average',currentSpeed,'entrada al tram');document.getElementById('segmentCard')?.classList.add('auto-hidden');document.getElementById('segmentState').textContent='EN CURS · AUTO';document.getElementById('segmentLive').classList.add('active');const hud=document.getElementById('drivingRadarHUD'),live=document.getElementById('drhLive');if(hud)hud.classList.add('visible');if(live)live.style.display='block';showRadarAlert(T().start(av.limit,av.totalKm.toFixed(1).replace('.',',')),'average');speakRadar(T().startVoice(av.limit)); updateRouteHUD(av);updateSegmentRadarUI()}
+function routeProgressForRadar(r){
+  if(!r||lastLat===null||lastLon===null)return null;
+  if(r.type==='average'){
+    const total=Math.max(.001,r.totalKm||haversineKm(r.lat,r.lon,r.toLat,r.toLon));
+    const done=haversineKm(r.lat,r.lon,lastLat,lastLon);
+    return Math.max(0,Math.min(1,done/total));
+  }
+  return null;
+}
+function updateRouteHUD(r){
+  const box=document.getElementById('drhRoute'), prog=document.getElementById('drhRouteProgress'), marker=document.getElementById('drhRouteMarker'), radar=document.getElementById('drhRouteRadar'), zone=document.getElementById('drhMobileZone');
+  if(!box||!prog||!marker||!radar)return;
+  box.classList.add('visible');
+  const d=r&&Number.isFinite(r.d)?r.d:(r?distanceToRadar(r):0);
+  if(r&&r.type==='average'){
+    const p=routeProgressForRadar(r)||0; prog.style.width=(p*100)+'%'; marker.style.left=(p*100)+'%'; radar.style.display='block'; radar.className='route-radar average'; radar.style.left='100%';
+    document.getElementById('drhRouteTitle').textContent=alertLang()==='es'?'RECORRIDO RADAR DE TRAMO':'RECORREGUT RADAR DE TRAM';
+    document.getElementById('drhRouteStatus').textContent=(Math.max(0,r.totalKm-(r.totalKm*p))).toFixed(1).replace('.',',')+' km';
+    document.getElementById('drhRouteStart').textContent=alertLang()==='es'?'INICIO':'INICI'; document.getElementById('drhRouteMiddle').textContent=alertLang()==='es'?'CONTROL':'CONTROL'; document.getElementById('drhRouteEnd').textContent=alertLang()==='es'?'FIN':'FI';
+  } else {
+    const span=Math.max(.3,Math.min(2,Number(alertSettings.distanceM||1000)/1000)); const p=Math.max(0,Math.min(1,1-(d/span))); prog.style.width=(p*100)+'%'; marker.style.left=(p*100)+'%'; radar.style.display='block'; radar.className='route-radar fixed'; radar.style.left='100%';
+    document.getElementById('drhRouteTitle').textContent=alertLang()==='es'?'RADAR FIJO · APROXIMACIÓN':'RADAR FIX · APROXIMACIÓ'; document.getElementById('drhRouteStatus').textContent=Math.round(d*1000)+' m';
+    document.getElementById('drhRouteStart').textContent='0 m'; document.getElementById('drhRouteMiddle').textContent=alertLang()==='es'?'RADAR':'RADAR'; document.getElementById('drhRouteEnd').textContent=alertLang()==='es'?'RADAR':'RADAR';
+  }
+  if(alertSettings.mobileZones && getSctMobileZone()){ zone.style.display='block'; zone.style.left='8%'; zone.style.width='84%'; } else zone.style.display='none';
+}
+const TRIP_HISTORY_KEY='sg_trip_history_v1';
+function loadTripHistory(){try{const a=JSON.parse(localStorage.getItem(TRIP_HISTORY_KEY)||'[]');return Array.isArray(a)?a:[]}catch{return []}}
+function logRadarPass(r,kind,speed=currentSpeed,extra=''){
+  if(!r||loggedRadarIds.has(r.id)) return;
+  loggedRadarIds.add(r.id);
+  tripRadarLog.push({time:Date.now(),id:r.id,type:kind,ref:r.ref||'',name:r.name||'',lat:Number.isFinite(lastLat)?lastLat:null,lon:Number.isFinite(lastLon)?lastLon:null,limit:r.limit||null,speed:Math.round(speed||0),average:extra||''});
+  try{localStorage.setItem('sg_trip_radar_log',JSON.stringify(tripRadarLog));}catch(e){console.warn('No s’ha pogut desar el radar',e)}
+}
+function saveCompletedTrip(){
+  if(!tripStartedAt||Date.now()-tripStartedAt<15000)return null;
+  const history=loadTripHistory();
+  const trip={id:'trip_'+tripStartedAt,start:tripStartedAt,end:Date.now(),radars:tripRadarLog.slice(),diagnostics:tripDiagnosticLog.slice(),track:tripTrackSamples.slice(),distanceKm:Number.isFinite(tripDistanceKm)?Number(tripDistanceKm.toFixed(2)):null,durationSeconds:Math.max(0,Math.round((Date.now()-tripStartedAt)/1000)),gpsAccuracyM:Number.isFinite(lastGpsAccuracy)?Math.round(lastGpsAccuracy):null};
+  if(!history.some(x=>x.id===trip.id)){history.unshift(trip);try{localStorage.setItem(TRIP_HISTORY_KEY,JSON.stringify(history.slice(0,100)));}catch(e){console.warn('No s’ha pogut desar l’historial de viatges',e)}}
+  return trip;
+}
+function renderTripSummary(trip){
+  const modal=document.getElementById('tripSummaryModal'),rows=document.getElementById('tripSummaryRows'),sub=document.getElementById('tripSummarySub');if(!modal||!rows||!sub)return;
+  const start=trip.start||tripStartedAt,end=trip.end||Date.now(),logs=trip.radars||tripRadarLog;
+  const mins=Math.max(0,Math.round((end-start)/60000));const diags=trip.diagnostics||[];sub.textContent=`${logs.length} radar(s) · ${new Date(start).toLocaleString()} → ${new Date(end).toLocaleTimeString()} · ${mins} min${trip.distanceKm!=null?' · '+trip.distanceKm.toLocaleString()+' km':''}${trip.gpsAccuracyM!=null?' · GPS ±'+trip.gpsAccuracyM+' m':''} · ${diags.length} incidència/es tècnica/ques`; let diagEl=document.getElementById('tripDiagnosticRows');if(!diagEl){diagEl=document.createElement('div');diagEl.id='tripDiagnosticRows';diagEl.style.cssText='margin-top:14px;border-top:1px solid #243638;padding-top:10px';rows.parentNode.insertBefore(diagEl,rows.nextSibling);}diagEl.innerHTML=diags.length?'DIAGNÒSTIC DEL TRAJECTE\n'+diags.slice(-30).map(x=>new Date(x.time).toLocaleTimeString()+' · '+String(x.type).replace(/[<>]/g,'')+' · '+String(x.message).replace(/[<>]/g,'')).join('\n'):'Sense incidències tècniques registrades.';
+  rows.innerHTML=logs.length?logs.map(x=>`<div class="trip-row"><div><div class="rname">${x.type==='fixed'?'⚠ RADAR FIX':'📡 RADAR DE TRAM'} ${x.ref||x.name||''}</div><div class="rmeta">${new Date(x.time).toLocaleTimeString()} · límit ${x.limit||'—'} km/h${x.average?` · ${x.average}`:''}</div></div><div class="rspeed">${x.speed}</div><div>km/h</div></div>`).join(''):'<div class="trip-summary-sub">No s’ha registrat cap radar en aquest viatge.</div>';
+  modal.classList.add('visible');
+}
+function showTripSummary(){saveCompletedTrip();renderTripSummary({start:tripStartedAt,end:Date.now(),radars:tripRadarLog.slice()});showTripHistory();}
+function showTripHistory(){
+  const el=document.getElementById('tripHistoryList');if(!el)return;const history=loadTripHistory();
+  if(!history.length){el.innerHTML='<div class="trip-summary-sub">Encara no hi ha viatges desats.</div>';return;}
+  el.innerHTML='<div style="font-weight:900;margin:10px 0;color:#9fffd8">HISTORIAL DESAT</div>'+history.map((t,i)=>`<button type="button" class="trip-close" style="text-align:left;margin-top:5px" onclick="openSavedTrip(${i})">${new Date(t.start).toLocaleDateString()} · ${new Date(t.start).toLocaleTimeString()} · ${(t.radars||[]).length} radars${t.distanceKm!=null?' · '+t.distanceKm+' km':''}</button>`).join('');
+}
+function openSavedTrip(i){const t=loadTripHistory()[i];if(t)renderTripSummary(t)}
+function closeTripSummary(){document.getElementById('tripSummaryModal')?.classList.remove('visible');}
+function startNewTrip(){tripStartedAt=Date.now();tripRadarLog=[];tripDiagnosticLog=[];tripTrackSamples=[];try{localStorage.setItem(TRIP_TRACK_KEY,'[]')}catch{};loggedRadarIds=new Set();tripDistanceKm=0;lastTripLat=null;lastTripLon=null;try{localStorage.removeItem('sg_trip_radar_log');localStorage.removeItem(TRIP_DIAGNOSTICS_KEY)}catch{}logTripDiagnostic('trip','Trajecte iniciat');}
+
+function checkRadarProximity(){
+  lastRadarProximityCheckAt=Date.now();
+  if(lastLat===null||lastLon===null)return;
+  for(const [id,until] of completedAverageRadars) if(until<=Date.now()) completedAverageRadars.delete(id);
+  const now=Date.now(), maxD=Math.max(100,Number(alertSettings.distanceM)||1000)/1000;
+  let mobileZone=null, zoneKey=null;
+  // A mobile-zone UI/translation failure must never stop fixed/average radar alerts.
+  try {
+    mobileZone=updateMobileZoneHUD();
+    zoneKey=mobileZone ? normRef(mobileZone.ref) : null;
+    if(zoneKey && zoneKey!==lastMobileZoneKey){
+      lastMobileZoneKey=zoneKey;
+      logTripDiagnostic('mobile-zone','Entrada a zona de possible vigilància mòbil',{road:zoneKey});
+      if(alertSettings.mobileZones && alertSettings.visual) showRadarAlert(T().mobile(),'danger');
+      if(alertSettings.mobileZones && alertSettings.voice && now-lastMobileAlertAt>8000){
+        lastMobileAlertAt=now;
+        speakRadar(mobileZoneVoice());
+      }
+    } else if(!zoneKey){
+      if(lastMobileZoneKey) logTripDiagnostic('mobile-zone','Sortida de zona de vigilància mòbil',{road:lastMobileZoneKey});
+      lastMobileZoneKey=null;
+      const hud=document.getElementById('drivingRadarHUD');
+      if(hud && !segmentRadar.active) hud.classList.remove('danger');
+    }
+  } catch(e) {
+    console.warn('SpeedGuard: error processant zona mòbil',e);
+    logTripDiagnostic('mobile-zone-error','Error processant zona de vigilància mòbil');
+    mobileZone=null; zoneKey=null;
+  }
+  const av=alertSettings.average ? radarDetection.average.map(r=>({...r,d:distanceToRadar(r)})).filter(r=>r.d<Math.max(1.5,maxD/1000)&&radarDirectionOK(r)).sort((a,b)=>a.d-b.d)[0] : null;
+  radarDetection.activeAverageId=av?av.id:null;
+  if(av){
+    if(!segmentRadar.active&&av.d<.35&&!completedAverageRadars.has(av.id)) autoStartAverageRadar(av);
+    const key='average:'+av.id;
+    if(!segmentRadar.active&&av.d<maxD/1000&&now-(radarDetection.lastAlertByKey[key]||0)>25000){
+      radarDetection.lastAlertByKey[key]=now;
+      showRadarAlert(T().avg(Math.round(av.d*1000),av.limit),'average');
+      speakRadar(T().avgVoice(Math.round(av.d*1000),av.limit)); updateRouteHUD(av);
+    }
+  }
+  const fx=alertSettings.fixed ? radarDetection.fixed.map(r=>({...r,d:distanceToRadar(r),type:'fixed'})).filter(r=>r.d<maxD/1000).filter(radarDirectionOK).sort((a,b)=>a.d-b.d)[0] : null;
+  if(fx){
+    if(fx.d<=0.08) logRadarPass(fx,'fixed',currentSpeed);
+    const key='fixed:'+fx.id;
+    if(now-(radarDetection.lastAlertByKey[key]||0)>25000){
+      radarDetection.lastAlertByKey[key]=now;
+      showRadarAlert(T().fixed(Math.round(fx.d*1000),fx.limit),'fixed');
+      speakRadar(T().fixedVoice(Math.round(fx.d*1000),fx.limit)); updateRouteHUD(fx);
+    }
+  }
+  // Si no hi ha radar a l'abast i no hi ha tram actiu, amaga els avisos antics.
+  if(!av&&!fx&&!mobileZone&&!segmentRadar.active){
+    const hud=document.getElementById('drivingRadarHUD');
+    const live=document.getElementById('drhLive');
+    const alert=document.getElementById('drhAlert');
+    const route=document.getElementById('drhRoute');
+    const banner=document.getElementById('autoRadarAlert');
+    if(live)live.style.display='none';
+    if(route)route.classList.remove('visible');
+    if(hud){hud.classList.remove('visible','fixed','danger');}
+    if(banner)banner.style.display='none';
+    if(alert)alert.textContent=T().scanning(radarDetection.fixed.length+radarDetection.average.length);
+  }
+}
+
+
+// Recuperació des de la pantalla de navegació: neteja estats locals i força una nova consulta de radars.
+async function recoverFromNavigation(){
+  const btn=document.getElementById('navRecoverBtn');
+  const status=document.getElementById('navRecoverStatus');
+  if(btn?.disabled)return;
+  if(btn)btn.disabled=true;
+  if(status)status.textContent='Recalculant estats…';
+  try{
+    const localOk=recoverRadarSystem('manual');
+    if(lastLat===null||lastLon===null){
+      if(status)status.textContent='Cal esperar una posició GPS vàlida';
+      return;
+    }
+    if(radarQuerying){
+      if(status)status.textContent=localOk?'Estats recuperats; consulta de radars ja en curs':'Consulta de radars ja en curs';
+      return;
+    }
+    if(status)status.textContent='Forçant una nova consulta de radars…';
+    localStorage.removeItem('sg_radar_cache_v24');
+    await detectRadars(true);
+    if(lastLat!==null&&lastLon!==null){updateMobileZoneHUD();checkRadarProximity();updateNearestRadarHUD();}
+    if(status)status.textContent='✓ Recuperació acabada · '+new Date().toLocaleTimeString();
+  }catch(e){
+    console.warn('Recuperació des de navegació',e);
+    if(status)status.textContent='No s’ha pogut actualitzar; comprova la connexió';
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
+
+// Recuperació local: neteja només els estats visuals/càlculs que poden quedar enganxats.
+// No esborra la base de radars, el trajecte ni els radars de tram completats.
+function recoverRadarSystem(reason='manual') {
+  const now=Date.now();
+  if(radarRecoveryBusy || (reason!=='manual' && now-lastRadarRecoveryAt<30000)) return false;
+  radarRecoveryBusy=true; lastRadarRecoveryAt=now;
+  try {
+    const oldActive=radarDetection.activeAverageId;
+    radarDetection.activeAverageId=null;
+    activeMobileZoneKey=null;
+    // Elimina només els elements d'alerta obsolets; no reinicia GPS ni dades persistents.
+    const banner=document.getElementById('autoRadarAlert'); if(banner) banner.style.display='none';
+    const hud=document.getElementById('drivingRadarHUD');
+    const live=document.getElementById('drhLive');
+    const alert=document.getElementById('drhAlert');
+    if(!segmentRadar.active && live) live.style.display='none';
+    if(!segmentRadar.active && hud) hud.classList.remove('visible','fixed','danger');
+    if(!segmentRadar.active) document.getElementById('drhRoute')?.classList.remove('visible');
+    if(alert) alert.textContent=T().scanning(radarDetection.fixed.length+radarDetection.average.length);
+    if(lastLat!==null&&lastLon!==null){
+      updateMobileZoneHUD();
+      checkRadarProximity();
+      updateNearestRadarHUD();
+      if(segmentRadar.active) { updateSegmentRadarUI(); const ar=radarDetection.average.find(x=>x.id===segmentRadar.id); if(ar) updateRouteHUD(ar); }
+    }
+    logTripDiagnostic('radar-recovery',reason==='manual'?'Recuperació manual del sistema de radars':'Recuperació automàtica del sistema de radars',{previousActive:oldActive||null,radarsFixed:radarDetection.fixed.length,radarsAverage:radarDetection.average.length});
+    const status=document.getElementById('radarRecoveryStatus');
+    if(status) status.textContent='✓ Radars recalculats · '+new Date().toLocaleTimeString();
+    return true;
+  } catch(e) {
+    console.warn('Recuperació de radars fallida',e);
+    logTripDiagnostic('radar-recovery-error','Error durant la recuperació de radars');
+    const status=document.getElementById('radarRecoveryStatus'); if(status) status.textContent='⚠ No s’ha pogut recuperar automàticament';
+    return false;
+  } finally { radarRecoveryBusy=false; }
+}
+
+// Watchdog: només actua amb la pàgina visible. Recalcula si hi ha GPS recent però
+// la comprovació de proximitat s'ha quedat enrere; no reinicia el GPS en bucle.
+setInterval(()=>{
+  if(document.visibilityState!=='visible' || inputMode!=='gps' || lastLat===null || lastLon===null) return;
+  const now=Date.now();
+  const gpsAge=now-(lastGpsTimestamp||0);
+  if(gpsAge>35000){
+    if(now-lastRadarRecoveryAt>60000){
+      logTripDiagnostic('gps-stale','No arriba cap actualització GPS mentre l’app és visible',{ageSeconds:Math.round(gpsAge/1000)});
+      setGPSStatus('waiting','GPS sense actualitzacions recents · esperant senyal');
+      // No fem clearWatch automàticament repetidament: iOS pot limitar la geolocalització.
+      lastRadarRecoveryAt=now;
+    }
+    return;
+  }
+  if(now-lastRadarProximityCheckAt>20000) recoverRadarSystem('watchdog');
+},15000);
+
+function parseMaxspeed(val) {
+  if (!val) return null;
+  const n = parseInt(val);
+  if (!isNaN(n)) return n;
+  // ES:urban = 50, ES:rural = 90, ES:motorway = 120
+  const map = { 'ES:urban':50, 'ES:rural':90, 'ES:motorway':120, 'ES:living_street':20 };
+  return map[val] || null;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  RADAR DE TRAM — velocitat mitjana per distància/temps
+// ══════════════════════════════════════════════════════════════════
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLon = (lon2-lon1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function startSegmentRadar() {
+  const total = parseFloat(document.getElementById('segmentDistance').value);
+  const limit = parseFloat(document.getElementById('segmentLimit').value);
+  if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(limit) || limit <= 0) {
+    showToast('⚠ Introdueix distància i límit vàlids');
+    return;
+  }
+  if (inputMode !== 'gps' || lastLat === null || lastLon === null) {
+    showToast('⚠ Cal tenir GPS actiu abans d’iniciar');
+    return;
+  }
+  segmentRadar = {active:true,totalKm:total,limitKmh:limit,distanceKm:0,startTime:performance.now(),lastLat,lastLon,completed:false};
+  document.getElementById('segmentDistance').disabled = true;
+  document.getElementById('segmentLimit').disabled = true;
+  document.getElementById('segmentStartBtn').style.display = 'none';
+  document.getElementById('segmentStopBtn').style.display = 'block';
+  document.getElementById('segmentLive').classList.add('active');
+  document.getElementById('segmentState').textContent = 'EN CURS';
+  updateSegmentRadarUI();
+  showToast('📡 Radar de tram iniciat');
+}
+
+function stopSegmentRadar() {
+  if (!segmentRadar.active) return;
+  const wasAuto = !!segmentRadar.auto;
+  segmentRadar.active = false;
+  document.getElementById('segmentDistance').disabled = false;
+  document.getElementById('segmentLimit').disabled = false;
+  document.getElementById('segmentStartBtn').style.display = 'block';
+  document.getElementById('segmentStopBtn').style.display = 'none';
+  document.getElementById('segmentState').textContent = wasAuto ? 'FINALITZAT' : 'FINALITZAT';
+  document.getElementById('segmentCard')?.classList.remove('auto-hidden');
+  updateSegmentRadarUI();
+}
+
+function updateSegmentRadarPosition(lat, lon) {
+  if (!segmentRadar.active || segmentRadar.lastLat === null) return;
+  const d = haversineKm(segmentRadar.lastLat, segmentRadar.lastLon, lat, lon);
+  // Ignore GPS jitter and implausible jumps.
+  if (d >= 0.003 && d <= 0.15) segmentRadar.distanceKm = Math.min(segmentRadar.totalKm, segmentRadar.distanceKm + d);
+  segmentRadar.lastLat = lat;
+  segmentRadar.lastLon = lon;
+  updateSegmentRadarUI();
+  checkRadarProximity();
+  if (segmentRadar.distanceKm >= segmentRadar.totalKm) {
+    const wasAuto = !!segmentRadar.auto;
+    if (wasAuto) { const ar=radarDetection.average.find(x=>x.id===segmentRadar.id); const rec=tripRadarLog.find(x=>x.id===segmentRadar.id); if(rec) rec.average=`mitjana ${document.getElementById('drhAverage')?.textContent||'—'} km/h`; else logRadarPass(ar,'average',segmentRadar.entrySpeed||currentSpeed,`mitjana ${document.getElementById('drhAverage')?.textContent||'—'} km/h`); localStorage.setItem('sg_trip_radar_log',JSON.stringify(tripRadarLog)); completedAverageRadars.set(segmentRadar.id,Date.now()+10*60*1000); }
+    segmentRadar.completed = true;
+    stopSegmentRadar();
+    document.getElementById('segmentState').textContent = 'TRAM COMPLETAT';
+    showRadarAlert(T().complete,'average');
+    if(wasAuto) speakRadar(T().completeVoice);
+    showToast('✓ Radar de tram completat');
+  }
+}
+
+function updateSegmentRadarUI() {
+  const live = document.getElementById('segmentLive');
+  if (!live) return;
+  const done = segmentRadar.distanceKm;
+  const total = segmentRadar.totalKm || 1;
+  const pct = Math.min(100, done / total * 100);
+  const elapsedHours = segmentRadar.startTime ? (performance.now() - segmentRadar.startTime) / 3600000 : 0;
+  const avg = elapsedHours > 0 && done > 0 ? done / elapsedHours : 0;
+  const left = Math.max(0, total - done);
+  const current = Math.max(0, Math.round(currentSpeed));
+  const margin = segmentRadar.limitKmh - avg;
+  const fill = document.getElementById('segmentProgressFill');
+  fill.style.width = pct.toFixed(1) + '%';
+  fill.style.background = margin < 0 ? 'linear-gradient(90deg,#ff9500,#ff3b30)' : margin < 5 ? 'linear-gradient(90deg,#ffe500,#ff9500)' : 'linear-gradient(90deg,#00ff88,#00c8ff)';
+  document.getElementById('segmentDistanceDone').textContent = done.toFixed(2).replace('.',',') + ' km';
+  document.getElementById('segmentDistanceLeft').textContent = left.toFixed(2).replace('.',',') + ' km restants';
+  document.getElementById('segmentCurrentSpeed').textContent = current;
+  const avgEl = document.getElementById('segmentAverageSpeed');
+  avgEl.textContent = avg.toFixed(1).replace('.',',');
+  avgEl.style.color = margin < 0 ? '#ff3b30' : margin < 5 ? '#ffe500' : '#00ff88';
+  const warning = document.getElementById('segmentWarning');
+  if (!segmentRadar.active && !segmentRadar.completed) warning.textContent = '';
+  else if (margin < 0) warning.textContent = '⚠ MITJANA PER SOBRE DEL LÍMIT';
+  else if (margin < 5) warning.textContent = `⚠ NOMÉS ${margin.toFixed(1).replace('.',',')} km/h DE MARGE MITJÀ`;
+  else warning.textContent = `✓ MARGE MITJÀ: ${margin.toFixed(1).replace('.',',')} km/h`;
+  const hud=document.getElementById('drivingRadarHUD'),liveHud=document.getElementById('drhLive');
+  if(hud&&liveHud&&segmentRadar.active){hud.classList.add('visible');liveHud.style.display='block';document.getElementById('drhAlert').textContent=`📡 RADAR DE TRAM · LÍMIT ${segmentRadar.limitKmh} km/h`;document.getElementById('drhState').textContent=segmentRadar.auto?'AUTO · EN CURS':'EN CURS';document.getElementById('drhFill').style.width=pct.toFixed(1)+'%';const routeProgress=document.getElementById('drhRouteProgress');if(routeProgress)routeProgress.style.width=pct.toFixed(1)+'%';const routeMarker=document.getElementById('drhRouteMarker');if(routeMarker)routeMarker.style.left=pct.toFixed(1)+'%';document.getElementById('drhFill').style.background=margin<0?'linear-gradient(90deg,#ff9500,#ff3b30)':margin<5?'linear-gradient(90deg,#ffe500,#ff9500)':'linear-gradient(90deg,#00ff88,#00c8ff)';document.getElementById('drhDone').textContent=done.toFixed(2).replace('.',',')+' km';document.getElementById('drhLeft').textContent=left.toFixed(2).replace('.',',')+' km';document.getElementById('drhCurrent').textContent=current;const davg=document.getElementById('drhAverage');davg.textContent=avg.toFixed(1).replace('.',',');davg.style.color=margin<0?'#ff3b30':margin<5?'#ffe500':'#00ff88';document.getElementById('drhWarning').textContent=margin<0?'⚠ MITJANA PER SOBRE DEL LÍMIT':margin<5?`⚠ ${margin.toFixed(1).replace('.',',')} km/h DE MARGE`:`✓ MARGE ${margin.toFixed(1).replace('.',',')} km/h`}
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  CORE UPDATE
+// ══════════════════════════════════════════════════════════════════
+function getSancion(exceso) {
+  return sanciones.find(s => exceso >= s.minExceso && exceso <= s.maxExceso) || sanciones[0];
+}
+
+function update() {
+  updateSpeedCalibrationControls();
+  const spd    = Math.max(0, Math.round(currentSpeed));
+  const dst = document.getElementById('driveStatusText');
+  if (dst) dst.textContent = (inputMode === 'gps' ? (lastLat !== null ? 'GPS ACTIVO' : 'ESPERANDO GPS') : 'MANUAL');
+  const limite = currentVia.limite;
+  const exceso = spd - limite;
+  const s      = getSancion(exceso);
+  const multa  = s.descuento ? s.multa * 0.5 : s.multa;
+  if (segmentRadar.active) { updateSegmentRadarUI(); const ar=radarDetection.average.find(x=>x.id===segmentRadar.id); if(ar) updateRouteHUD(ar); }
+  const pct    = Math.min(100, (spd / (limite * 2)) * 100);
+
+  // Speed value
+  const sv = document.getElementById('speedValue');
+  sv.textContent = spd;
+  sv.style.color = s.color;
+  sv.style.textShadow = `0 0 30px ${s.color}55`;
+
+  // Limit badge
+  document.getElementById('limitBadge').textContent = limite;
+
+  // Bar
+  document.getElementById('limitBarFill').style.width = pct + '%';
+  document.getElementById('limitBarFill').style.background =
+    `linear-gradient(90deg, #00ff88, ${s.color})`;
+
+  // Excess
+  const eb = document.getElementById('excessBadge');
+  eb.textContent = exceso > 0 ? '+' + exceso : (exceso < 0 ? exceso : '✓');
+  eb.style.color = s.color;
+
+  // Status dot color
+  document.getElementById('statusDot').style.background = s.color;
+  document.getElementById('statusDot').style.boxShadow  = `0 0 6px ${s.color}`;
+
+  // Window border
+  const fw = document.getElementById('floatWindow');
+  fw.className = '';
+  if (s.id === 'leve')    fw.classList.add('alert-warn');
+  if (s.id === 'grave' || s.id === 'muy_grave' || s.id === 'grave_ext') fw.classList.add('alert-bad');
+  if (s.id === 'penal')   fw.classList.add('alert-penal');
+
+  // Siri-inspired perimeter halo. It stays concentrated on the screen edge.
+  const halo = document.getElementById('edgeHalo');
+  if (halo) {
+    const color = s.id === 'ok' ? '#00ff88' : (s.color || '#00ff88');
+    halo.style.setProperty('--halo-color', color);
+    halo.className = 'active';
+    if (exceso <= 0 || s.id === 'ok') {
+      halo.classList.add('calm');
+    } else if (s.id === 'leve') {
+      halo.classList.add('warning');
+    } else if (s.id === 'grave' || s.id === 'muy_grave' || s.id === 'grave_ext') {
+      halo.classList.add('urgent');
+    } else if (s.id === 'penal') {
+      halo.classList.add('penal');
+    } else {
+      halo.classList.add('warning');
+    }
+  }
+
+  // Sanción card
+  let pills = '';
+  if (exceso > 0 && s.multa > 0) {
+    const multaDisplay = s.multa;
+    const pp = s.descuento ? `<span style="font-size:10px;color:#888"> (${Math.round(s.multa*0.5)}€ pronto pago)</span>` : '';
+    pills += `<span class="sancion-pill pill-multa">💶 ${multaDisplay}€${pp ? '' : ''}</span>`;
+    if (s.descuento) pills += `<span class="sancion-pill" style="background:rgba(255,229,0,0.1);color:#ffe500">50% dto → ${Math.round(s.multa*0.5)}€</span>`;
+  }
+  if (s.puntos > 0)  pills += `<span class="sancion-pill pill-puntos">−${s.puntos} pts</span>`;
+  if (s.carcel)      pills += `<span class="sancion-pill pill-carcel">⛓ Prisión posible</span>`;
+  if (exceso <= 0)   pills += `<span class="sancion-pill pill-ok">✓ Sin sanción</span>`;
+
+  const card = document.getElementById('sancionCard');
+  card.style.borderColor = s.color + '44';
+  card.style.background  = s.color + '0d';
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="font-size:20px">${getSancionIcon(s.id)}</span>
+      <div>
+        <div class="sancion-label" style="color:${s.color}">${s.label}</div>
+        <div class="sancion-desc">${s.desc}</div>
+      </div>
+    </div>
+    <div class="sancion-row">${pills}</div>
+    ${s.nota ? `<div class="sancion-nota">⚖ ${s.nota}</div>` : ''}
+  `;
+}
+
+function getSancionIcon(id) {
+  return { ok:'✅', leve:'⚠️', grave:'🚨', muy_grave:'🔴', grave_ext:'🆘', penal:'⛓' }[id] || '❓';
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  EDITOR
+// ══════════════════════════════════════════════════════════════════
+function renderEditor() {
+  const list = document.getElementById('sancionesEditorList');
+  list.innerHTML = sanciones.filter(s => s.id !== 'ok').map((s, i) => `
+    <div class="sancion-editor-item" style="border-left:3px solid ${s.color}">
+      <div style="font-size:13px;font-weight:700;color:${s.color};margin-bottom:8px;">
+        ${getSancionIcon(s.id)} ${s.label}
+      </div>
+      <div class="editor-row">
+        <span class="editor-label">Exceso mín.</span>
+        <input class="editor-input" type="number" data-field="minExceso" data-id="${s.id}" value="${s.minExceso}" min="0" max="300">
+        <span style="font-size:10px;color:var(--muted);margin-left:4px">km/h</span>
+      </div>
+      <div class="editor-row">
+        <span class="editor-label">Exceso máx.</span>
+        <input class="editor-input" type="number" data-field="maxExceso" data-id="${s.id}" value="${s.maxExceso === 999 ? 999 : s.maxExceso}" min="0" max="999">
+        <span style="font-size:10px;color:var(--muted);margin-left:4px">km/h (999=∞)</span>
+      </div>
+      <div class="editor-row">
+        <span class="editor-label">Multa (€)</span>
+        <input class="editor-input" type="number" data-field="multa" data-id="${s.id}" value="${s.multa}" min="0">
+      </div>
+      <div class="editor-row">
+        <span class="editor-label">Puntos –</span>
+        <input class="editor-input" type="number" data-field="puntos" data-id="${s.id}" value="${s.puntos}" min="0" max="12">
+      </div>
+      <div class="editor-row">
+        <label class="editor-check">
+          <input type="checkbox" data-field="descuento" data-id="${s.id}" ${s.descuento ? 'checked' : ''}>
+          Descuento 50% pronto pago
+        </label>
+      </div>
+      <div class="editor-row">
+        <label class="editor-check">
+          <input type="checkbox" data-field="carcel" data-id="${s.id}" ${s.carcel ? 'checked' : ''}>
+          Riesgo de prisión (Art. 379 CP)
+        </label>
+      </div>
+      <div class="editor-row">
+        <span class="editor-label">Nota</span>
+        <input class="editor-input" type="text" data-field="nota" data-id="${s.id}" value="${s.nota}" placeholder="Nota informativa…">
+      </div>
+    </div>
+  `).join('');
+}
+
+function saveSanciones() {
+  // Collect all inputs
+  document.querySelectorAll('[data-id]').forEach(el => {
+    const id    = el.dataset.id;
+    const field = el.dataset.field;
+    const idx   = sanciones.findIndex(s => s.id === id);
+    if (idx === -1) return;
+    if (el.type === 'checkbox')  sanciones[idx][field] = el.checked;
+    else if (el.type === 'number') sanciones[idx][field] = parseFloat(el.value) || 0;
+    else sanciones[idx][field] = el.value;
+  });
+  saveSancionesStorage(sanciones);
+  showToast('✓ Guardado correctamente');
+  update();
+}
+
+function resetSanciones() {
+  if (!confirm('¿Restaurar valores por defecto de la DGT?')) return;
+  sanciones = JSON.parse(JSON.stringify(DEFAULT_SANCIONES));
+  saveSancionesStorage(sanciones);
+  renderEditor();
+  update();
+  showToast('↺ Valores restaurados');
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  Object.assign(t.style, {
+    position:'fixed', bottom:'60px', left:'50%', transform:'translateX(-50%)',
+    background:'#00ff8822', border:'1px solid #00ff8866', color:'#00ff88',
+    padding:'8px 16px', borderRadius:'20px', fontSize:'12px', zIndex:999999,
+    fontFamily:"'Share Tech Mono',monospace", letterSpacing:'1px',
+    pointerEvents:'none', transition:'opacity 0.3s',
+  });
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2000);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  DRAGGABLE + MINIMIZE
+// ══════════════════════════════════════════════════════════════════
+(function initDrag() {
+  const win = document.getElementById('floatWindow');
+  const bar = document.getElementById('titleBar');
+  let isDragging = false, startX, startY, startLeft, startTop;
+
+  function onDown(e) {
+    if (e.target.closest('.tb-btn')) return;
+    isDragging = true;
+    const pt = e.touches ? e.touches[0] : e;
+    startX = pt.clientX; startY = pt.clientY;
+    const r = win.getBoundingClientRect();
+    startLeft = r.left; startTop = r.top;
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('mouseup',  onUp);
+    document.addEventListener('touchend', onUp);
+  }
+  function onMove(e) {
+    if (!isDragging) return;
+    if (e.cancelable) e.preventDefault();
+    const pt = e.touches ? e.touches[0] : e;
+    const dx = pt.clientX - startX, dy = pt.clientY - startY;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const w = win.offsetWidth, h = win.offsetHeight;
+    win.style.left = Math.max(0, Math.min(vw - w, startLeft + dx)) + 'px';
+    win.style.top  = Math.max(0, Math.min(vh - h, startTop  + dy)) + 'px';
+  }
+  function onUp() {
+    isDragging = false;
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('mouseup',  onUp);
+    document.removeEventListener('touchend', onUp);
+  }
+
+  bar.addEventListener('mousedown', onDown);
+  bar.addEventListener('touchstart', onDown, { passive: false });
+})();
+
+document.getElementById('minimizeBtn').addEventListener('click', () => {
+  const w = document.getElementById('floatWindow');
+  w.classList.toggle('minimized');
+  document.getElementById('minimizeBtn').textContent = w.classList.contains('minimized') ? '□' : '_';
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  HALO CONFIGURATION
+// ══════════════════════════════════════════════════════════════════
+const DEFAULT_HALO_SETTINGS = { width:3, intensity:35, glow:8, gradient:18, beam:35, speed:70 };
+const HALO_SETTINGS_VERSION = 3;
+let haloSettings = {...DEFAULT_HALO_SETTINGS, ...(JSON.parse(localStorage.getItem('sg_halo_settings') || '{}'))};
+if (Number(localStorage.getItem('sg_halo_settings_version') || 0) < HALO_SETTINGS_VERSION) {
+  haloSettings = {...DEFAULT_HALO_SETTINGS};
+  localStorage.setItem('sg_halo_settings_version', String(HALO_SETTINGS_VERSION));
+}
+
+function applyHaloSettings() {
+  const halo = document.getElementById('edgeHalo');
+  if (!halo) return;
+  halo.style.setProperty('--halo-width', haloSettings.width + 'px');
+  halo.style.setProperty('--halo-glow', haloSettings.glow + 'px');
+  halo.style.setProperty('--halo-gradient', haloSettings.gradient + '%');
+  halo.style.setProperty('--halo-intensity', haloSettings.intensity / 100);
+  halo.style.setProperty('--halo-beam-opacity', haloSettings.beam / 100);
+  // 0 = static, 200 = twice as fast. 100 = default.
+  if (haloSettings.speed === 0) halo.style.setProperty('--halo-speed', '999999s');
+  else halo.style.setProperty('--halo-speed', Math.max(.18, 7 / (haloSettings.speed / 100)) + 's');
+  localStorage.setItem('sg_halo_settings', JSON.stringify(haloSettings));
+  updateHaloControls();
+}
+
+function updateHaloControls() {
+  const map = { haloWidthRange:['haloWidthValue', v=>v+' px'], haloIntensityRange:['haloIntensityValue', v=>v+'%'], haloGlowRange:['haloGlowValue', v=>v+' px'], haloGradientRange:['haloGradientValue', v=>v+'%'], haloBeamRange:['haloBeamValue', v=>v+'%'], haloSpeedRange:['haloSpeedValue', v=>v==0?'Aturat':(v/100).toFixed(1)+'×'] };
+  Object.entries(map).forEach(([id,[out,fmt]])=>{ const el=document.getElementById(id), target=document.getElementById(out); if(el&&target){el.value=haloSettings[{haloWidthRange:'width',haloIntensityRange:'intensity',haloGlowRange:'glow',haloGradientRange:'gradient',haloBeamRange:'beam',haloSpeedRange:'speed'}[id]]; target.textContent=fmt(el.value);}});
+  const preview=document.getElementById('haloPreview');
+  if(preview){ preview.style.setProperty('--preview-width',Math.min(20,Math.max(3,haloSettings.width/2))+'px'); preview.style.setProperty('--preview-glow',Math.min(55,haloSettings.glow)+'px'); preview.style.setProperty('--preview-gradient',haloSettings.gradient+'%'); preview.style.setProperty('--preview-alpha',Math.min(1.5,haloSettings.intensity/100)); }
+}
+
+function bindHaloControls() {
+  const ids={haloWidthRange:'width',haloIntensityRange:'intensity',haloGlowRange:'glow',haloGradientRange:'gradient',haloBeamRange:'beam',haloSpeedRange:'speed'};
+  Object.entries(ids).forEach(([id,key])=>{ const el=document.getElementById(id); if(!el) return; el.addEventListener('input',()=>{haloSettings[key]=Number(el.value); applyHaloSettings();}); });
+  updateHaloControls();
+}
+
+function setHaloPreset(name){
+  const presets={discret:{width:2,intensity:20,glow:4,gradient:10,beam:20,speed:50},normal:{width:4,intensity:40,glow:10,gradient:22,beam:45,speed:85},intens:{width:10,intensity:85,glow:36,gradient:48,beam:90,speed:150}};
+  haloSettings={...presets[name]}; applyHaloSettings();
+}
+function resetHaloSettings(){ haloSettings={...DEFAULT_HALO_SETTINGS}; applyHaloSettings(); }
+
+applyHaloSettings();
+
+// ══════════════════════════════════════════════════════════════════
+//  V44 — VISION CAMERA CAPTURE (prototype only; no hazard detection)
+// ══════════════════════════════════════════════════════════════════
+let visionStream = null;
+let visionWasActiveBeforeHidden = false;
+
+function setVisionStatus(state, message) {
+  const status = document.getElementById('visionStatus');
+  const text = document.getElementById('visionStatusText');
+  if (status) status.dataset.state = state;
+  if (text) text.textContent = message;
+}
+
+function setVisionControls(active) {
+  const start = document.getElementById('visionStart');
+  const stop = document.getElementById('visionStop');
+  const wrap = document.getElementById('visionVideoWrap');
+  if (start) start.disabled = active;
+  if (stop) stop.disabled = !active;
+  if (wrap) wrap.classList.toggle('active', active);
+}
+
+async function startVisionCamera() {
+  const video = document.getElementById('visionPreview');
+  if (visionStream) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setVisionStatus('error', 'Aquest navegador o context no permet accedir a la càmera. Comprova que l’app s’obri amb HTTPS.');
+    return;
+  }
+  setVisionStatus('warning', 'Sol·licitant permís de càmera…');
+  try {
+    visionStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 15, max: 20 }
+      }
+    });
+    video.srcObject = visionStream;
+    await video.play();
+    setVisionControls(true);
+    setVisionStatus('active', 'Càmera activa. Captura en prova; encara no s’analitzen els perills.');
+    const track = visionStream.getVideoTracks()[0];
+    if (track) track.addEventListener('ended', () => {
+      visionStream = null;
+      if (video) video.srcObject = null;
+      setVisionControls(false);
+      setVisionStatus('error', 'La captura de càmera s’ha aturat. Torna-la a activar quan sigui segur.');
+    });
+  } catch (error) {
+    stopVisionCamera(false);
+    let message = 'No s’ha pogut activar la càmera. Comprova els permisos i torna-ho a provar.';
+    if (error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) message = 'Permís de càmera denegat. Autoritza’l a la configuració del navegador i torna-ho a provar.';
+    else if (error && error.name === 'NotFoundError') message = 'No s’ha trobat cap càmera disponible.';
+    else if (error && error.name === 'NotReadableError') message = 'La càmera està ocupada per una altra aplicació o no es pot iniciar.';
+    setVisionStatus('error', message);
+    console.warn('SpeedGuard Vision camera error:', error);
+  }
+}
+
+function stopVisionCamera(updateStatus = true) {
+  if (visionStream) {
+    visionStream.getTracks().forEach(track => track.stop());
+    visionStream = null;
+  }
+  const video = document.getElementById('visionPreview');
+  if (video) video.srcObject = null;
+  setVisionControls(false);
+  if (updateStatus) setVisionStatus('idle', 'Càmera desactivada. Activa-la només amb el vehicle aturat.');
+}
+
+document.getElementById('visionStart')?.addEventListener('click', startVisionCamera);
+document.getElementById('visionStop')?.addEventListener('click', () => stopVisionCamera());
+
+// A PWA cannot guarantee continuous camera processing in the background on iOS.
+// Stop capture when the page is hidden so the UI never implies that monitoring continues.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && visionStream) {
+    visionWasActiveBeforeHidden = true;
+    stopVisionCamera(false);
+    setVisionStatus('warning', 'Captura aturada en sortir de l’app. iOS no garanteix la càmera en segon pla; reactiva-la quan estiguis aturat.');
+  } else if (!document.hidden && visionWasActiveBeforeHidden) {
+    visionWasActiveBeforeHidden = false;
+    setVisionStatus('warning', 'La captura no s’ha reprès automàticament. Reactiva la càmera manualment quan sigui segur.');
+  }
+});
+
+window.addEventListener('pagehide', () => stopVisionCamera(false));
+
+// ══════════════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════════════
+renderViaGrid();
+bindHaloControls();
+bindSpeedCalibrationControls();
+bindAlertSettings();
+applyDrivingMode();
+updateRadarScanHUD();
+update();
+startGPS();
+
+// Polling update for GPS-derived speed
+setInterval(() => {
+  if (inputMode === 'gps') update();
+}, 1000);
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  // SpeedGuard V44 — force Service Worker refresh and recover from stale caches
+  if ('serviceWorker' in navigator) {
+    let sgReloadedAfterUpdate = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (sgReloadedAfterUpdate) return;
+      sgReloadedAfterUpdate = true;
+      window.location.reload();
+    });
+    navigator.serviceWorker.register('./sw.js?v=44', { updateViaCache: 'none' })
+      .then(reg => {
+        console.log('SpeedGuard SW V44 registered', reg);
+        reg.update().catch(() => {});
+      })
+      .catch(e => console.warn('SW err', e));
+  }
+}
+</script>
+</body>
+</html>
